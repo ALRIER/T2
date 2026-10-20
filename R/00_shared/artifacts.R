@@ -124,6 +124,13 @@ t2_emit_stage_artifacts <- function(out, shard, stage, mode, family, seed, start
       t2_write_csv(out[[nm]], file.path(d$results, paste0(nm, '.csv')))
       if (identical(nm, 'scores')) t2_write_csv(out[[nm]], file.path(d$raw, 'raw_scores.csv'))
     }
+  if (!is.null(out$independence_audit))
+    t2_write_csv(out$independence_audit, file.path(d$trace, 'independence_audit.csv'))
+  if (!is.null(out$budget_parity))
+    t2_write_csv(out$budget_parity, file.path(d$trace, 'budget_parity.csv'))
+  if (!is.null(out$stress_config))
+    t2_write_csv(as.data.frame(out$stress_config, stringsAsFactors=FALSE),
+                 file.path(d$trace, 'stress_config.csv'))
   if (!is.null(out$results)) for (nm in names(out$results))
     if (is.data.frame(out$results[[nm]])) t2_write_csv(out$results[[nm]], file.path(d$results, paste0(nm, '.csv')))
   finished <- Sys.time()

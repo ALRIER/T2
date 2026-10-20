@@ -11,6 +11,26 @@ paired_q95_bootstrap <- function(candidate_se,control_se,B=500L,seed=101L,q=.95)
  data.frame(metric='q95',difference=point,ci_low=ci[1],ci_high=ci[2],
    bootstrap_B=B,mcse_boot=sd(diff)/sqrt(B),p_value=NA_real_)
 }
+
+# Paired randomization test for the q95 loss contrast. Within each replicate,
+# candidate/control labels are swapped jointly; this preserves the pairing and
+# tests the exchangeability null without treating q95 as a mean statistic.
+paired_q95_permutation <- function(candidate_se, control_se, B=1000L,
+                                   seed=101L, q=.95) {
+ a <- as.numeric(candidate_se); b <- as.numeric(control_se); n <- length(a)
+ stopifnot(length(a) == length(b), n >= 20L, all(is.finite(a)),
+           all(is.finite(b)), B >= 100L)
+ observed <- unname(quantile(a, q, type=8) - quantile(b, q, type=8))
+ set.seed(seed); null <- numeric(B)
+ for (k in seq_len(B)) {
+   swap <- sample(c(FALSE, TRUE), n, replace=TRUE)
+   left <- ifelse(swap, b, a); right <- ifelse(swap, a, b)
+   null[k] <- unname(quantile(left, q, type=8) - quantile(right, q, type=8))
+ }
+ p <- (1 + sum(null <= observed)) / (B + 1)
+ data.frame(metric='q95', difference=observed, p_value=p,
+            permutation_B=B, stringsAsFactors=FALSE)
+}
 # Inference family includes all prespecified candidate-vs-control hypotheses
 # for a given stage and metric. Do not condition the multiplicity family on wins.
 stage_fdr_all_models <- function(comparisons,stage,alpha=.05) {
@@ -31,11 +51,18 @@ model_comparison_table <- function(T,models,target,benchmark_id='mean',stage='he
  rows<-lapply(seq_along(models),function(j){
   a<-(model_predict(T,models[[j]])-target)^2
   d<-a-b; p<-if(ids[j]==benchmark_id) 1 else if(sd(d)==0) {if(mean(d)<0)0 else 1} else t.test(d,alternative='less')$p.value
-  q<-paired_q95_bootstrap(a,b,B,seed+j)
+   q<-paired_q95_bootstrap(a,b,B,seed+j)
+   qp<-paired_q95_permutation(a,b,max(1000L, B),seed+j)
   data.frame(model=ids[j],benchmark=benchmark_id,metric='mse',
    estimate=mean(a),difference=mean(d),ci_low=if(sd(d)==0)mean(d) else mean(d)-qt(.975,length(d)-1)*sd(d)/sqrt(length(d)),
    ci_high=if(sd(d)==0)mean(d) else mean(d)+qt(.975,length(d)-1)*sd(d)/sqrt(length(d)),p_value=p,
-   q95_difference=q$difference,q95_ci_low=q$ci_low,q95_ci_high=q$ci_high)
+   q95_difference=q$difference,q95_ci_low=q$ci_low,q95_ci_high=q$ci_high,
+   q95_p_value=qp$p_value,q95_permutation_B=qp$permutation_B)
  })
- stage_fdr_all_models(do.call(rbind,rows),stage)
+ out <- stage_fdr_all_models(do.call(rbind,rows),stage)
+ out$q95_q_value <- NA_real_
+ ok <- is.finite(out$q95_p_value)
+ out$q95_q_value[ok] <- p.adjust(out$q95_p_value[ok], method='BH')
+ out$q95_confirmed <- ok & out$q95_q_value <= ga_config$fdr_primary
+ out
 }

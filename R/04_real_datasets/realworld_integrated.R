@@ -15,8 +15,15 @@ realworld_integrated_audit <- function(datasets,models,sample_sizes=c(200L,1000L
  # within-dataset test occasions conservatively with Bonferroni.
  keys<-interaction(ans$dataset_id,ans$model,drop=TRUE)
  primary<-do.call(rbind,lapply(split(ans,keys),function(x){
-    out<-x[1,,drop=FALSE];out$p_value<-min(1,min(x$p_value)*nrow(x));out$sample_n<-NA_integer_;out
+    out<-x[1,,drop=FALSE]
+    out$p_value<-min(1,min(x$p_value,na.rm=TRUE)*nrow(x))
+    out$q95_p_value<-min(1,min(x$q95_p_value,na.rm=TRUE)*nrow(x))
+    out$sample_n<-NA_integer_;out
  }))
  primary<-stage_fdr_all_models(primary,'realworld_dataset_level',.05)
+ primary$q95_q_value <- NA_real_
+ ok <- is.finite(primary$q95_p_value)
+ primary$q95_q_value[ok] <- p.adjust(primary$q95_p_value[ok], method='BH')
+ primary$q95_confirmed <- ok & primary$q95_q_value <= .05
  list(condition_rows=ans,dataset_level=primary)
 }

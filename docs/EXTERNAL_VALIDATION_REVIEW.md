@@ -70,16 +70,19 @@ independent primary datasets.
 This review identifies the intended external sources and scientific rationale. T2
 now has a separate MC anchoring adapter and shape-range check. The final
 real-world adapter is integrated, but its local passing mode is explicitly
-fixture-only until the reviewed public manifest is populated. The L1--L3
+fixture-only until the reviewed public manifest is populated; the manifest can
+be supplied reproducibly through `T2_REALWORLD_MANIFEST`. The L1--L3
 historical audit layers are integrated and pass the local smoke contract. The
 five-input full L4 gate now uses a redistributable R-packaged financial anchor;
 DS1 and DS5 are explicitly recorded as stress/out-of-family diagnostics when
 their observed shape falls outside the synthetic envelope. All five
 anchors are stored locally with raw/processed hashes. Before enabling full mode,
 T2 still needs the reviewed public manifest/cache for the final external
-battery.
+battery. Stress execution, held-out independence/budget auditing, and paired
+q95/BH-FDR inference are now implemented and contract-tested; they do not make
+the fixture a substitute for the external battery.
 Until those gates are satisfied, the fixture-only smoke run remains the only
 intentionally passing real-world mode.
 
-The current implementation therefore keeps the full real-world and stress gates
+The current implementation therefore keeps only the full real-world data gate
 closed rather than silently substituting fixtures for empirical evidence.

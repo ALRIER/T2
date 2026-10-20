@@ -1,7 +1,8 @@
 # Final real-world validation adapter.
 # This module is intentionally separate from the Monte Carlo empirical anchors.
 
-t2_realworld_manifest <- function(path = file.path('config', 'public_datasets.csv')) {
+t2_realworld_manifest <- function(path = Sys.getenv('T2_REALWORLD_MANIFEST',
+                                                       unset=file.path('config', 'public_datasets.csv'))) {
   if (!file.exists(path)) stop('Final real-world manifest is missing')
   tab <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
   required <- c('dataset_id', 'path', 'sha256', 'license')

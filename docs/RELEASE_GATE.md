@@ -5,8 +5,9 @@ Status: NOT READY FOR FULL EXPERIMENT.
 - Stage order now enforces dataset manifest verification and Monte Carlo validation before simulation and Discovery.
 - The historical Monte Carlo audit layers L1 (moment fidelity), L2 (contamination fidelity), and L3 (statistical sanity) are now integrated and pass the local smoke contract. L4 empirical anchoring remains a separate five-input full-mode gate; it is not the final real-world battery.
 - The historical Monte Carlo empirical-anchoring adapter and shape-range execution are integrated. All five anchors are now locally acquired with reviewed licenses and raw/processed hashes; DS1 and the financial DS5 are explicitly marked stress/out-of-family where their observed shapes fall outside the synthetic envelope.
-- Current public datasets manifest contains only a checked-in test fixture. Full mode rejects it.
-- Full realworld and stress stages currently stop deliberately.
+- Current public datasets manifest contains only a checked-in test fixture. Full realworld mode still rejects it until the reviewed external battery is populated.
+- Full stress mode is implemented with bounded, environment-configurable repetitions (`T2_STRESS_SAMPLE_N`, `T2_STRESS_REPS`) and remains shardable by family/engine/seed.
+- Held-out independence and four-engine budget parity are now executable audits; q95 paired randomization p-values and BH-FDR q-values are emitted with the inference tables.
 - Local stage-resume is contract-tested, and cross-workflow GitHub artifact restoration was verified by manual run `39447280249` restoring run `39446799142`; all eight completed stages were detected and skipped.
 - Each family/optimizer/seed shard now writes raw inputs, checkpoints, RDS/CSV results and trace manifests under `artifacts/<shard>/<stage>/`; GitHub Actions uploads those directories as run artifacts.
 - The Actions matrix is bounded to 8 concurrent jobs and 360 minutes per job, matching the six-hour GitHub-hosted job ceiling; stage artifacts are uploaded incrementally for recovery.

@@ -131,16 +131,23 @@ t2_run_heldout <- function(discovery,mode,shard,family='normal') {
   per_sc<-lapply(s,function(z){scores<-score_model_set(z$T,discovery$models,z$target);scores$scenario_id<-z$scenario_id;scores$sample_n<-n;scores})
   do.call(rbind,per_sc)
  })
- list(scores=do.call(rbind,by_n),models=discovery$models,stage='heldout',fresh_rng=TRUE)
+ audit <- t2_heldout_independence_audit(discovery, mode, shard, family, n_values)
+ list(scores=do.call(rbind,by_n),models=discovery$models,stage='heldout',fresh_rng=TRUE,
+      independence_audit=audit, budget_parity=t2_budget_parity_audit(discovery))
 }
 t2_run_realworld <- function(discovery,mode,shard) {
  t2_run_realworld_public(discovery, mode, shard)
 }
 t2_run_stress <- function(discovery,mode,shard,family='normal') {
- if(mode=='full')stop('Real-world stress manifest is not configured')
- x<-t2_make_scenarios('smoke',paste0(shard,'_stress'),200L,30L,family)
+ stress_mode <- if (mode == 'full') 'full' else 'smoke'
+ stress_n <- as.integer(Sys.getenv('T2_STRESS_SAMPLE_N', unset=if(mode=='full') '1000' else '200'))
+ stress_R <- as.integer(Sys.getenv('T2_STRESS_REPS', unset=if(mode=='full') '250' else '30'))
+ if (!is.finite(stress_n) || stress_n < 20L || !is.finite(stress_R) || stress_R < 5L)
+   stop('Invalid stress runtime configuration')
+ x<-t2_make_scenarios(stress_mode,paste0(shard,'_stress'),stress_n,stress_R,family)
  result<-do.call(rbind,lapply(x$scenarios,function(s){z<-score_model_set(s$T,discovery$models,s$target);z$scenario_id<-s$scenario_id;z}))
- list(scores=result,stage='stress',fixture=TRUE)
+ list(scores=result,stage='stress',fixture=identical(mode, 'smoke'),stress_config=list(sample_n=stress_n,
+      replications=stress_R,scenario_count=length(x$scenarios),family=family))
 }
 t2_run_aggregate <- function(shard){
  d<-t2_require(shard,'discovery');h<-t2_require(shard,'heldout');r<-t2_require(shard,'realworld');s<-t2_require(shard,'stress')

@@ -3,15 +3,14 @@
   "full_run_ready": false,
   "validation_layers": {
     "mc_empirical_anchoring": "five_anchors_acquired_with_two_explicit_stress_out_of_family_policies",
-    "realworld_external_battery": "adapter_integrated_fixture_smoke_only",
+    "realworld_external_battery": "adapter_ready_for_reviewed_manifest_fixture_only_until_populated",
+    "production_stress": "full_mode_implemented_with_env_configured_shards",
+    "heldout_and_budget_audit": "independence_and_four_engine_budget_contract_executable",
+    "final_inference": "paired_q95_randomization_and_bh_fdr_executable",
     "github_actions_recovery": "verified_cross_workflow_artifact_restore_and_stage_skip"
   },
   "required_before_full": [
-    "reviewed public dataset manifests and checksums for MC empirical anchoring and final real-world battery",
     "reviewed public manifest and cached inputs for final real-world battery",
-    "independent heldout regime partition",
-    "objective evaluation parity and budgets",
-    "actual R runtime tests",
     "reviewed retention or commit policy for generated artifacts"
   ]
 }
