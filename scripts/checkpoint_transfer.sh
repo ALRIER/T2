@@ -38,7 +38,7 @@ if [[ "$mode" == push ]]; then
   rsync -a --partial --delay-updates --exclude='*.tmp' "$local_dir/" "$remote:$staging/"
   rsync -a "$manifest" "$remote:$staging/.t2_manifest.sha256"
   ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$remote" \
-    "mv '$staging' '$published' && printf '%s\\n' '$snapshot' > '$published/.READY' && ln -sfn '$published' '$remote_dir/latest'"
+    "mkdir -p '$remote_dir/snapshots' && mv '$staging' '$published' && printf '%s\\n' '$snapshot' > '$published/.READY' && ln -sfn '$published' '$remote_dir/latest'"
 else
   restore_dir="$root/.t2_restore_${shard}_$$"
   cleanup() { rm -rf -- "$restore_dir"; }
