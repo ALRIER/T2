@@ -68,11 +68,13 @@ independent primary datasets.
 ## Consequence for T2
 
 This review identifies the intended external sources and scientific rationale. T2
-now has a separate MC anchoring adapter and shape-range check, but its five input
-files still need acquisition, license review, and final SHA-256 values. Before
-enabling full mode, T2 also needs the final external-battery adapter and its
-reviewed manifest. Until those inputs are checked in, the fixture-only smoke run
-remains the only intentionally passing real-world mode.
+now has a separate MC anchoring adapter and shape-range check. Four anchors are
+stored locally with hashes; SPY remains an external non-redistributable input and
+cannot be checked into the public repository. Before enabling full mode, T2 also
+needs a policy-approved private-input path for SPY, the remaining historical
+validation integration, and the final external-battery adapter and manifest.
+Until those gates are satisfied, the fixture-only smoke run remains the only
+intentionally passing real-world mode.
 
 The current implementation therefore keeps the full real-world and stress gates
 closed rather than silently substituting fixtures for empirical evidence.

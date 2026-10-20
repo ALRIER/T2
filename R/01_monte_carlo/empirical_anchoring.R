@@ -86,7 +86,8 @@ t2_run_mc_empirical_anchoring <- function(mode='full', shard='mc_anchor',
                 manifest=t2_mc_manifest()))
   }
   manifest <- t2_mc_manifest()
-  if (any(is.na(manifest$license) | !nzchar(trimws(manifest$license))) ||
+  if (any(is.na(manifest$license) | !nzchar(trimws(manifest$license)) |
+          grepl('review|pending|unknown|nonredistributable', manifest$license, ignore.case=TRUE)) ||
       any(is.na(manifest$sha256) | !nzchar(trimws(manifest$sha256))))
     stop('MC empirical manifest requires license and SHA-256 for every input')
   if (any(!file.exists(manifest$local_path)))
