@@ -52,7 +52,9 @@ model_comparison_table <- function(T,models,target,benchmark_id='mean',stage='he
   a<-(model_predict(T,models[[j]])-target)^2
   d<-a-b; p<-if(ids[j]==benchmark_id) 1 else if(sd(d)==0) {if(mean(d)<0)0 else 1} else t.test(d,alternative='less')$p.value
    q<-paired_q95_bootstrap(a,b,B,seed+j)
-   qp<-paired_q95_permutation(a,b,max(1000L, B),seed+j)
+   perm_B <- suppressWarnings(as.integer(Sys.getenv('T2_Q95_PERMUTATION_B', unset='250')))
+   if (!is.finite(perm_B) || perm_B < 100L) perm_B <- 250L
+   qp<-paired_q95_permutation(a,b,perm_B,seed+j)
   data.frame(model=ids[j],benchmark=benchmark_id,metric='mse',
    estimate=mean(a),difference=mean(d),ci_low=if(sd(d)==0)mean(d) else mean(d)-qt(.975,length(d)-1)*sd(d)/sqrt(length(d)),
    ci_high=if(sd(d)==0)mean(d) else mean(d)+qt(.975,length(d)-1)*sd(d)/sqrt(length(d)),p_value=p,

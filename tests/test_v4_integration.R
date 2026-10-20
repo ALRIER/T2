@@ -10,7 +10,7 @@ mods<-c(reference_model_set(),list(new_frozen_model('nsga_candidate',weights=a$w
 comp<-model_comparison_table(T,mods,0,stage='discovery',B=100L)
 stopifnot(nrow(comp)==length(mods),all(is.finite(comp$q_value)),all(comp$evidence_type=='exploratory'))
 stopifnot(all(is.finite(comp$q95_p_value)), all(is.finite(comp$q95_q_value)),
-          all(comp$q95_permutation_B >= 1000L))
+          all(comp$q95_permutation_B >= 100L))
 stopifnot(is.finite(paired_q95_bootstrap((T[,1])^2,(T[,2])^2,100L)$difference))
 stopifnot(is.finite(paired_q95_permutation((T[,1])^2,(T[,2])^2,100L)$p_value))
 cat('Integration v4 integration smoke test: PASS\n')

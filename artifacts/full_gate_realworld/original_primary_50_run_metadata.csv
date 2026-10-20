@@ -1,0 +1,13 @@
+field,value
+status,PASS
+manifest_rows,50
+score_rows,1200
+condition_rows,1200
+dataset_level_rows,400
+realworld_reps,500
+sample_sizes,"200,1000,3000"
+q95_permutation_B,250
+elapsed_seconds,3809.323
+run_scope,original_primary_50
+source_selection,"20 UCI + 30 Rdatasets; market/Yahoo sources excluded"
+note,"The full local computation completed successfully; warnings emitted by R remain subject to review."
