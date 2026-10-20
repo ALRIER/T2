@@ -116,11 +116,15 @@ t2_run_discovery <- function(data,mode,shard,engine='all'){
  cfg<-ga_config
  if(mode=='smoke'){cfg$population<-8L;cfg$generations<-2L;cfg$patience<-2L;cfg$bootstrap_B<-100L}
  s<-data$scenarios
- engines<-list(ga=ga_discover(s,cfg,t2_seed(shard,201)),
-               nsga2=nsga_discover(s,cfg,t2_seed(shard,202)),
-               de=de_discover(s,cfg,t2_seed(shard,203)),
-               dirichlet=dirichlet_discover(s,cfg,t2_seed(shard,204),n_draws=cfg$population*(cfg$generations+1L)))
- if (engine != 'all') engines <- engines[engine]
+ dispatch <- list(
+   ga=function() ga_discover(s,cfg,t2_seed(shard,201)),
+   nsga2=function() nsga_discover(s,cfg,t2_seed(shard,202)),
+   de=function() de_discover(s,cfg,t2_seed(shard,203)),
+   dirichlet=function() dirichlet_discover(s,cfg,t2_seed(shard,204),n_draws=cfg$population*(cfg$generations+1L))
+ )
+ selected <- if (engine == 'all') names(dispatch) else engine
+ if (!all(selected %in% names(dispatch))) stop('Unknown discovery engine')
+ engines <- setNames(lapply(selected, function(name) dispatch[[name]]()), selected)
  list(engines=engines,models=t2_models(engines),config=cfg,seed=t2_seed(shard,200))
 }
 t2_run_heldout <- function(discovery,mode,shard,family='normal') {
