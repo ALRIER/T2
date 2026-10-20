@@ -1,7 +1,7 @@
 Deployment from a local computer with git and GitHub authentication:
 
 ```bash
-git clone https://github.com/ALRIER/T2.git
+git clone "${GITHUB_REPOSITORY_URL:-https://github.com/<owner>/<repository>.git}"
 cd T2
 # Copy all files from this package into the clone, keeping subdirectories intact.
 git add -A

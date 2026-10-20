@@ -1,14 +1,24 @@
 name: Verification
+
 on:
-  workflow_dispatch:
   push:
-    paths: ['R/**','tests/**','scripts/**','.github/workflows/smoke.yml']
+    paths: ['R/**', 'tests/**', 'scripts/**', 'config/**', '.github/workflows/smoke.yml']
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Execution mode'
+        required: true
+        default: smoke
+        type: choice
+        options: [smoke, full]
+
 permissions:
   contents: read
+
 jobs:
-  modular:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
@@ -16,11 +26,61 @@ jobs:
           use-public-rspm: true
       - run: Rscript -e 'install.packages("statmod", repos="https://cloud.r-project.org")'
       - run: Rscript tests/test_checkpoint_contract.R
+      - run: Rscript tests/test_artifact_contract.R
+      - run: Rscript tests/test_common_pipeline.R
+      - run: Rscript tests/test_smoke.R
+      - run: Rscript tests/test_v3_design.R
       - run: Rscript tests/test_v4_integration.R
-      - run: Rscript scripts/run_all_smoke.R
+
+  smoke:
+    needs: preflight
+    if: github.event_name == 'push' || inputs.mode == 'smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [normal]
+        seed: [0]
+        engine: [all]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("statmod", repos="https://cloud.r-project.org")'
+      - run: Rscript scripts/run_shard.R smoke ${{ matrix.family }} ${{ matrix.seed }} ${{ matrix.engine }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: integration-checkpoints
-          path: runtime/integration_smoke/
+          name: smoke-${{ matrix.family }}-${{ matrix.seed }}
+          path: artifacts/
+          if-no-files-found: error
           retention-days: 14
+
+  full:
+    needs: preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 270
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        seed: [0, 1, 2, 3, 4, 5, 6, 7]
+        engine: [nsga2, de, dirichlet]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("statmod", repos="https://cloud.r-project.org")'
+      - run: Rscript scripts/run_shard.R full ${{ matrix.family }} ${{ matrix.seed }} ${{ matrix.engine }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,4 +1,4 @@
-source('R/00_shared/load_all.R');t1_load()
+source('R/00_shared/load_all.R');t2_load()
 stopifnot(length(ESTIMATOR_REGISTRY)==26L,length(reference_model_set())==4L)
 T<-matrix(rnorm(80L*26L),ncol=26L);colnames(T)<-ESTIMATOR_NAMES
 models<-c(reference_model_set(),list(new_frozen_model('GA_frozen',weights=rep(1,26))))

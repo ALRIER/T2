@@ -1,0 +1,5 @@
+"rate","scale","mechanism","scenario_id"
+0,,"none",1
+0.01,1.5,"upper_tail",2
+0.1,1.5,"upper_tail",4
+0.2,1.5,"upper_tail",5

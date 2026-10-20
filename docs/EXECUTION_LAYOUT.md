@@ -1,0 +1,15 @@
+# Execution and artifact layout
+
+Every independent run is a shard identified by family, optimizer engine and seed. The default output root is `artifacts/`; CI can override it with `T2_OUTPUT_ROOT`.
+
+```text
+artifacts/<shard>/<stage>/
+  raw/          immutable inputs and generated matrices
+  checkpoints/  completion markers for resumable stage execution
+  results/      RDS products and tabular summaries
+  trace/        events.csv and run_manifest.csv
+```
+
+Use `Rscript scripts/run_stage.R STAGE SHARD MODE FAMILY SEED_INDEX ENGINE` for one stage or `Rscript scripts/run_shard.R MODE FAMILY SEED_INDEX ENGINE` for the complete dependency chain. A shard is independent, so optimizer engines, families and seeds can run concurrently in GitHub Actions without sharing mutable state.
+
+The repository stores the output contract and CI uploads each shard's generated artifacts to the corresponding Actions run. Production runs should retain or explicitly commit the resulting `artifacts/<shard>/` tree after review; large raw matrices should remain Actions artifacts rather than being copied into Git history.

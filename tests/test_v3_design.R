@@ -1,4 +1,4 @@
-source('R/00_shared/load_all.R');t1_load()
+source('R/00_shared/load_all.R');t2_load()
 m<-regime_manifest();stopifnot(nrow(m)==361L,all(c('clean','low','intermediate','high')%in%m$band))
 w<-training_weight(m);stopifnot(abs(sum(w$weight)-1)<1e-10)
 set.seed(12);T<-matrix(rnorm(80*26),ncol=26);colnames(T)<-ESTIMATOR_NAMES

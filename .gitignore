@@ -3,5 +3,9 @@
 .Rproj.user/
 *.tmp
 *.log
-checkpoint/
-results/
+runtime/
+*.rds.tmp
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/smoke_validation/
+!artifacts/smoke_validation/**
