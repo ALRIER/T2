@@ -169,7 +169,6 @@ jobs:
         with:
           r-version: '4.3.3'
           use-public-rspm: true
-      - run: Rscript scripts/generate_shard_plan.R
       - id: matrix
         run: echo "matrix=$(Rscript scripts/actions_matrix.R github_actions)" >> "$GITHUB_OUTPUT"
 
