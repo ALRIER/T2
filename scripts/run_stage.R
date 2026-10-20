@@ -7,6 +7,7 @@ if(!stage%in%c('preflight','datasets','mc_validation','montecarlo','discovery','
 if(!grepl('^[a-zA-Z0-9_-]{1,64}$',shard))stop('Invalid shard')
 if(!mode%in%c('smoke','full'))stop('Invalid mode')
 source('R/00_shared/load_all.R');t2_load('.')
+t2_check_runtime('.', strict = TRUE)
 source('R/00_shared/pipeline.R')
 if(!family%in%t2_families())stop('Invalid family')
 if(!engine%in%c('all','ga','nsga2','de','dirichlet'))stop('Invalid engine')

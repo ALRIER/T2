@@ -7,6 +7,7 @@ shard <- if (length(args) > 4L) args[5] else sprintf('%s_%s_seed%02d', family, e
 if (!mode %in% c('smoke','full')) stop('Invalid mode')
 if (!engine %in% c('all','ga','nsga2','de','dirichlet')) stop('Invalid engine')
 source('R/00_shared/load_all.R'); t2_load('.')
+t2_check_runtime('.', strict = TRUE)
 source('R/00_shared/pipeline.R')
 for (stage in c('datasets','mc_validation','montecarlo','discovery','heldout','realworld','stress','aggregate')) {
   cat('STAGE', stage, 'SHARD', shard, 'FAMILY', family, 'SEED', seed_index, '\n')
