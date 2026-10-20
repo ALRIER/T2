@@ -7,7 +7,7 @@
   },
   "required_before_full": [
     "reviewed public dataset manifests and checksums for MC empirical anchoring and final real-world battery",
-    "complete historical audits integrated",
+    "approved private or otherwise redistributable fifth MC empirical input",
     "independent heldout regime partition",
     "objective evaluation parity and budgets",
     "multi-run recovery verification",

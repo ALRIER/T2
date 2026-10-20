@@ -3,8 +3,8 @@
 Status: NOT READY FOR FULL EXPERIMENT.
 
 - Stage order now enforces dataset manifest verification and Monte Carlo validation before simulation and Discovery.
-- The four original legacy validation layers are preserved as source but are not ported into the current function environment. The current four quick numerical checks are NOT equivalent to the historical scientific suite. Full mode rejects them.
-- The historical Monte Carlo empirical-anchoring layer is distinct from the final real-world external battery. Its five-anchor adapter and shape-range execution are integrated, but acquisition, licensing, and final hashing are still pending.
+- The historical Monte Carlo audit layers L1 (moment fidelity), L2 (contamination fidelity), and L3 (statistical sanity) are now integrated and pass the local smoke contract. L4 empirical anchoring remains a separate five-input full-mode gate; it is not the final real-world battery.
+- The historical Monte Carlo empirical-anchoring adapter and shape-range execution are integrated. Four anchors are acquired, while the fifth SPY input requires an approved private/non-redistributable path and is intentionally not checked into the repository.
 - Current public datasets manifest contains only a checked-in test fixture. Full mode rejects it.
 - Full realworld and stress stages currently stop deliberately.
 - Checkpoints are local RDS artifacts; cross-workflow durable restoration and hash/version binding are not yet proven.

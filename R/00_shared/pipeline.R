@@ -91,20 +91,25 @@ t2_run_mc_validation <- function(mode,shard) {
  z<-replicate(m,{a<-rnorm(200);c(mean(a)^2,median(a)^2)})
  l3 <- mean(z[1,]) < mean(z[2,])
  l4 <- nrow(d$manifest)>=1L && all(file.exists(d$manifest$path))
- results<-data.frame(layer=c('L1','L2','L3','L4'),
+ results<-data.frame(layer=c('L1_interface','L2_interface','L3_interface','L4_manifest'),
                     status=ifelse(c(l1,l2,l3,l4),'PASS','FAIL'),
                     stringsAsFactors=FALSE)
+ audits <- t2_run_integrated_mc_audits(mode, shard)
+ results <- rbind(results, audits$summary)
  overall<-if(all(results$status=='PASS')) 'PASS' else 'FAIL'
   anchor <- t2_run_mc_empirical_anchoring(mode, shard)
   if (mode == 'full' && !identical(anchor$status, 'PASS')) overall <- 'FAIL'
+  if (mode == 'smoke' && identical(anchor$status, 'SKIPPED')) overall <-
+    if (audits$status == 'PASS' && all(results$status == 'PASS')) 'PASS' else 'FAIL'
   list(status=overall, layers=results, empirical_anchor=anchor$status,
        empirical_manifest=anchor$manifest,
-       results=list(empirical_anchor=if (!is.null(anchor$results)) anchor$results else
-                      data.frame(status=anchor$status, reason=anchor$reason)),
+       results=c(audits$results, list(empirical_anchor=if (!is.null(anchor$results)) anchor$results else
+                      data.frame(status=anchor$status, reason=anchor$reason))),
        seed=seed, scientific_scope=if(mode=='smoke')
-   'Interface smoke checks only; historical validation suite not certified' else
-   'MC numerical checks plus empirical shape anchoring; historical four-layer certification pending',
-   legacy_four_layer_certified=FALSE)
+   'Integrated historical audit smoke plus interface checks; empirical anchoring is not executed in smoke' else
+   'Integrated historical audits plus empirical shape anchoring; final real-world validation remains separate',
+   integrated_historical_audits=audits$status,
+   legacy_four_layer_certified=isTRUE(mode == 'full' && audits$status == 'PASS' && anchor$status == 'PASS'))
 }
 t2_run_discovery <- function(data,mode,shard,engine='all'){
  cfg<-ga_config
