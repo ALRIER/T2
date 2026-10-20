@@ -28,7 +28,7 @@ La unidad de reparto es el shard completo `familia × motor × semilla`. Todas l
 Instalar R 4.3.3 y, desde la raíz de T2:
 
 ```bash
-Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/Archive/statmod/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
 Rscript scripts/check_environment.R
 ```
 

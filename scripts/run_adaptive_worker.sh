@@ -19,13 +19,17 @@ min_available_gb="${T2_MIN_AVAILABLE_GB:-$_min_available_gb}"
 temp_warn="${T2_TEMP_WARN_C:-$_temp_warn}"
 temp_stop="${T2_TEMP_STOP_C:-$_temp_stop}"
 requires_sensor="${T2_REQUIRES_TEMP_SENSOR:-$_requires_sensor}"
-[[ -f "$plan" ]] || { echo "Missing shard plan: $plan" >&2; exit 2; }
+[[ -r "$plan" ]] || { echo "Missing shard plan: $plan" >&2; exit 2; }
 [[ "$mode" == smoke || "$mode" == full ]] || { echo "Mode must be smoke or full" >&2; exit 2; }
 
 temperature_c() {
   local value=""
   if command -v sensors >/dev/null 2>&1; then
-    value="$(sensors 2>/dev/null | grep -Eo '\+[0-9]+(\.[0-9]+)?°C' | tr -d '+°C' | sort -nr | head -1 || true)"
+    value="$(sensors 2>/dev/null | awk '
+      /^[[:space:]]*(Package id|Core [0-9]+|temp[0-9]+):/ {
+        if (match($0, /\+[0-9]+(\.[0-9]+)?/)) print substr($0, RSTART + 1, RLENGTH - 1)
+      }
+    ' | sort -nr | head -1 || true)"
   fi
   if [[ -z "$value" ]]; then
     value="$(for f in /sys/class/thermal/thermal_zone*/temp; do
@@ -88,6 +92,10 @@ while [[ -s "$queue" || "$active" -gt 0 ]]; do
     pids+=("$!")
     active=$((active + 1))
   done
-  sleep 15
+  if (( active > 0 )); then
+    sleep 5
+  elif [[ -s "$queue" ]]; then
+    sleep 15
+  fi
 done
 echo "ADAPTIVE WORKER PASS $worker_id ($total shards)"
