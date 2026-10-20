@@ -179,7 +179,7 @@ jobs:
     timeout-minutes: 360
     strategy:
       fail-fast: false
-      max-parallel: 32
+
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
