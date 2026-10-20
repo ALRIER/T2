@@ -31,7 +31,7 @@ jobs:
         with:
           r-version: '4.3.3'
           use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/Archive/statmod/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - run: Rscript scripts/check_environment.R
       - run: Rscript tests/test_checkpoint_contract.R
       - run: Rscript tests/test_artifact_contract.R
@@ -66,7 +66,7 @@ jobs:
         with:
           r-version: '4.3.3'
           use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/Archive/statmod/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - run: Rscript scripts/check_environment.R
       - name: Restore prior shard artifacts
         if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
@@ -237,7 +237,7 @@ jobs:
         with:
           r-version: '4.3.3'
           use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/Archive/statmod/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - run: Rscript scripts/check_environment.R
       - name: Restore prior shard artifacts
         if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
