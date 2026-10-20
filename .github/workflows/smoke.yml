@@ -41,6 +41,7 @@ jobs:
       - run: Rscript tests/test_historical_mc_contract.R
       - run: Rscript tests/test_engine_contract.R
       - run: Rscript tests/test_realworld_contract.R
+      - run: Rscript tests/test_resume_contract.R
 
   smoke:
     needs: preflight

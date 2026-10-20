@@ -11,7 +11,7 @@
     "reviewed public manifest and cached inputs for final real-world battery",
     "independent heldout regime partition",
     "objective evaluation parity and budgets",
-    "multi-run recovery verification",
+    "cross-workflow GitHub artifact restoration and commit/version binding verification",
     "actual R runtime tests",
     "reviewed retention or commit policy for generated artifacts"
   ]

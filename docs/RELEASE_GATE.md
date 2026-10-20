@@ -7,7 +7,7 @@ Status: NOT READY FOR FULL EXPERIMENT.
 - The historical Monte Carlo empirical-anchoring adapter and shape-range execution are integrated. Four anchors are acquired, while the fifth SPY input requires an approved private/non-redistributable path and is intentionally not checked into the repository.
 - Current public datasets manifest contains only a checked-in test fixture. Full mode rejects it.
 - Full realworld and stress stages currently stop deliberately.
-- Checkpoints are local RDS artifacts; cross-workflow durable restoration and hash/version binding are not yet proven.
+- Local stage-resume is contract-tested: a completed stage is detected and skipped on rerun. Cross-workflow GitHub artifact restoration and commit/version binding still require an actual Actions run.
 - Each family/optimizer/seed shard now writes raw inputs, checkpoints, RDS/CSV results and trace manifests under `artifacts/<shard>/<stage>/`; GitHub Actions uploads those directories as run artifacts.
 - The Actions matrix is bounded to 8 concurrent jobs and 360 minutes per job, matching the six-hour GitHub-hosted job ceiling; stage artifacts are uploaded incrementally for recovery.
 - Discovery now enumerates the four agreed competitors independently: GA original, NSGA-II, Differential Evolution, and Dirichlet. The first is scalar single-objective GA selection; NSGA-II remains a separate multiobjective comparator.
