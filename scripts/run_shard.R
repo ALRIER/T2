@@ -10,6 +10,10 @@ source('R/00_shared/load_all.R'); t2_load('.')
 source('R/00_shared/pipeline.R')
 for (stage in c('datasets','mc_validation','montecarlo','discovery','heldout','realworld','stress','aggregate')) {
   cat('STAGE', stage, 'SHARD', shard, 'FAMILY', family, 'SEED', seed_index, '\n')
+  if (identical(Sys.getenv('T2_RESUME', unset='0'), '1') && t2_stage_complete(shard, stage)) {
+    cat('RESUME SKIP', stage, shard, '\n')
+    next
+  }
   run_t2_stage(stage, shard, mode, family, seed_index, engine)
 }
 cat('SHARD PASS', shard, '\n')

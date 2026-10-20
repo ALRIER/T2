@@ -11,9 +11,15 @@ on:
         default: smoke
         type: choice
         options: [smoke, full]
+      resume_run_id:
+        description: 'Previous Verification run ID to restore completed stage artifacts'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   preflight:
@@ -43,26 +49,109 @@ jobs:
         family: [normal]
         seed: [0]
         engine: [all]
+    env:
+      T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
+      SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true
       - run: Rscript -e 'install.packages("statmod", repos="https://cloud.r-project.org")'
-      - run: Rscript scripts/run_shard.R smoke ${{ matrix.family }} ${{ matrix.seed }} ${{ matrix.engine }}
+      - name: Restore prior shard artifacts
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/
+      - name: Run datasets
+        run: Rscript scripts/run_stage.R datasets "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: smoke-${{ matrix.family }}-${{ matrix.seed }}
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
           path: artifacts/
           if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run mc_validation
+        run: Rscript scripts/run_stage.R mc_validation "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run montecarlo
+        run: Rscript scripts/run_stage.R montecarlo "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run discovery
+        run: Rscript scripts/run_stage.R discovery "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run heldout
+        run: Rscript scripts/run_stage.R heldout "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run realworld
+        run: Rscript scripts/run_stage.R realworld "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run stress
+        run: Rscript scripts/run_stage.R stress "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+      - name: Run aggregate
+        run: Rscript scripts/run_stage.R aggregate "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
+          path: artifacts/
+          if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
   full:
     needs: preflight
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
-    timeout-minutes: 270
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -70,17 +159,100 @@ jobs:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
         seed: [0, 1, 2, 3, 4, 5, 6, 7]
         engine: [nsga2, de, dirichlet]
+    env:
+      T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
+      SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true
       - run: Rscript -e 'install.packages("statmod", repos="https://cloud.r-project.org")'
-      - run: Rscript scripts/run_shard.R full ${{ matrix.family }} ${{ matrix.seed }} ${{ matrix.engine }}
+      - name: Restore prior shard artifacts
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/
+      - name: Run datasets
+        run: Rscript scripts/run_stage.R datasets "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run mc_validation
+        run: Rscript scripts/run_stage.R mc_validation "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run montecarlo
+        run: Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run discovery
+        run: Rscript scripts/run_stage.R discovery "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run heldout
+        run: Rscript scripts/run_stage.R heldout "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run realworld
+        run: Rscript scripts/run_stage.R realworld "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run stress
+        run: Rscript scripts/run_stage.R stress "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
+          path: artifacts/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+      - name: Run aggregate
+        run: Rscript scripts/run_stage.R aggregate "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
           path: artifacts/
           if-no-files-found: warn
+          overwrite: true
           retention-days: 30

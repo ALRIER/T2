@@ -8,7 +8,7 @@ Status: NOT READY FOR FULL EXPERIMENT.
 - Full realworld and stress stages currently stop deliberately.
 - Checkpoints are local RDS artifacts; cross-workflow durable restoration and hash/version binding are not yet proven.
 - Each family/optimizer/seed shard now writes raw inputs, checkpoints, RDS/CSV results and trace manifests under `artifacts/<shard>/<stage>/`; GitHub Actions uploads those directories as run artifacts.
-- The Actions matrix is bounded to 8 concurrent jobs and 270 minutes per job, below the five-hour operational ceiling.
+- The Actions matrix is bounded to 8 concurrent jobs and 360 minutes per job, matching the six-hour GitHub-hosted job ceiling; stage artifacts are uploaded incrementally for recovery.
 - Optimizer equivalence and q95 inferential validity require dedicated executed tests.
 - Public Git history and owner attribution cannot be erased by changing the current tree; do not confuse sanitizing source text with eliminating historical links.
 - Preserve reproducible configurations, scientific variable definitions and model contracts in the execution code. Obfuscation that makes audit impossible is not scientific anonymization.

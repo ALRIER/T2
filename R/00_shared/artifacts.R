@@ -29,6 +29,15 @@ t2_append_csv <- function(x, path) {
   invisible(path)
 }
 
+t2_stage_complete <- function(shard, stage) {
+  d <- t2_stage_dirs(shard, stage)
+  status <- file.path(d$checkpoints, paste0(stage, '.status'))
+  result <- file.path(d$results, paste0(stage, '.rds'))
+  trace <- file.path(d$trace, 'run_manifest.csv')
+  if (!all(file.exists(status, result, trace))) return(FALSE)
+  any(grepl('COMPLETE$', readLines(status, warn=FALSE)))
+}
+
 t2_emit_stage_artifacts <- function(out, shard, stage, mode, family, seed, started) {
   d <- t2_stage_dirs(shard, stage)
   t2_atomic_save(out, file.path(d$results, paste0(stage, '.rds')))
