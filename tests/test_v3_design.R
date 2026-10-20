@@ -1,0 +1,10 @@
+source('R/00_shared/load_all.R');t1_load()
+m<-regime_manifest();stopifnot(nrow(m)==361L,all(c('clean','low','intermediate','high')%in%m$band))
+w<-training_weight(m);stopifnot(abs(sum(w$weight)-1)<1e-10)
+set.seed(12);T<-matrix(rnorm(80*26),ncol=26);colnames(T)<-ESTIMATOR_NAMES
+sim<-lapply(c('clean','low','intermediate','high'),function(b)list(T=T,target=0,band=b,eligible=rep(TRUE,26)))
+W<-matrix(rexp(26*10),26);O<-nsga_evaluate_scenarios(W,sim)
+stopifnot(identical(dim(O),c(10L,2L)),length(nsga_select(O,5))==5L)
+fit<-apply_stage_fdr(data.frame(p_value=c(.001,.02,.4),metric='mse'),'discovery')
+stopifnot(nrow(fit)==3L,all(fit$evidence_type=='exploratory'))
+cat('PASS prospective design / Pareto / BH interface\n')

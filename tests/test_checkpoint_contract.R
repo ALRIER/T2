@@ -1,0 +1,6 @@
+source('R/00_shared/load_all.R');t1_load('.');source('R/00_shared/pipeline.R')
+f<-tempfile();a<-list(value=42L);t1_atomic_save(a,f);stopifnot(identical(readRDS(f),a));unlink(f)
+x<-build_contamination_grid();stopifnot(nrow(x)==361L)
+stopifnot(length(t1_families())==6L)
+stopifnot(all(c('mean','median','trimmed20','huber') %in% reference_models()))
+cat('CHECKPOINT AND GRID PASS\n')

@@ -1,0 +1,12 @@
+{
+  "status": "development-integration",
+  "full_run_ready": false,
+  "required_before_full": [
+    "reviewed public dataset manifest and checksums",
+    "complete historical audits integrated",
+    "independent heldout regime partition",
+    "objective evaluation parity and budgets",
+    "multi-run recovery verification",
+    "actual R runtime tests"
+  ]
+}

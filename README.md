@@ -1,7 +1,5 @@
 # Execution workspace
 
-Standalone execution environment. All required inputs, software components, tests, and outputs must be contained in this repository before a full run is permitted.
+Standalone scientific computation source bundle. No previous repository history is required. The software must pass all required internal validation checks before production tasks are enabled.
 
-Status: bootstrap only. Scientific modules are not yet deployed. Production execution is blocked.
-
-Work units are independent, reproducible, and checkpointed. Results are never treated as a completed experiment until all required validation gates pass.
+The research code is not certified for production. The four-stage upstream validation, external dataset sourcing, real-world tests and checkpoint recovery need validated integration before accepting experimental results.

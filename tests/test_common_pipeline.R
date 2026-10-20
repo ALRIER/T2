@@ -1,0 +1,11 @@
+source('R/00_shared/load_all.R');t1_load()
+stopifnot(length(ESTIMATOR_REGISTRY)==26L,length(reference_model_set())==4L)
+T<-matrix(rnorm(80L*26L),ncol=26L);colnames(T)<-ESTIMATOR_NAMES
+models<-c(reference_model_set(),list(new_frozen_model('GA_frozen',weights=rep(1,26))))
+y<-score_model_set(T,models,0)
+stopifnot(nrow(y)==5L,all(is.finite(y$mse)),all(is.finite(y$q95)))
+stopifnot(isTRUE(verify_matrix_equivalence()))
+grid<-build_contamination_grid();stopifnot(nrow(grid)==361L)
+p<-data.frame(stage=c('heldout','heldout','realworld'),p_value=c(.001,.1,.01))
+q<-bh_by_family(p);stopifnot(nrow(q)==3L,all(q$q_value>=q$p_value))
+cat('PASS common interface, grid, batch equivalence, BH grouping\n')

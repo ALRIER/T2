@@ -1,0 +1,7 @@
+source('R/00_shared/config.R')
+source('R/02_discovery/matrix_fitness.R')
+source('R/05_audits/precision_and_checks.R')
+source('R/01_monte_carlo/scenarios.R')
+stopifnot(nrow(build_contamination_grid())==361L)
+stopifnot(verify_matrix_equivalence())
+cat('Smoke tests passed\n')
