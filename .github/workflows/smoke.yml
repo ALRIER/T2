@@ -60,6 +60,9 @@ jobs:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
       T2_OUTPUT_ROOT: artifacts/ci
+      T2_REALWORLD_MANIFEST: config/public_datasets_smoke.csv
+      T2_REALWORLD_REPS: '3'
+      T2_REALWORLD_SAMPLE_SIZES: '200'
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
