@@ -22,8 +22,11 @@ IFS=',' read -r assigned shard family engine seed weight <<< "$row"
 log="$calibration_dir/${shard}.log"
 start_epoch="$(date +%s)"
 start_utc="$(date -u +%FT%TZ)"
+plan_one="$(mktemp)"
+trap 'rm -f "$plan_one"' EXIT INT TERM
+printf 'worker_id,shard,family,engine,seed,estimated_weight\n%s\n' "$row" > "$plan_one"
 set +e
-T2_MAX_PARALLEL=1 T2_RESUME=1 bash scripts/run_adaptive_worker.sh "$worker_id" "$mode" <(printf 'worker_id,shard,family,engine,seed,estimated_weight\n%s\n' "$row") >"$log" 2>&1
+T2_MAX_PARALLEL=1 T2_RESUME=1 bash scripts/run_adaptive_worker.sh "$worker_id" "$mode" "$plan_one" >"$log" 2>&1
 status=$?
 set -e
 end_epoch="$(date +%s)"

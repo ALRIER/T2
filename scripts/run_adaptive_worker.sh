@@ -53,8 +53,19 @@ awk -F, -v id="$worker_id" 'NR>1 && $1==id {print $0}' "$plan" > "$queue"
 total="$(wc -l < "$queue")"
 [[ "$total" -gt 0 ]] || { echo "No shards assigned to $worker_id"; exit 0; }
 
-active=0; stable_ticks=0
+active=0; stable_ticks=0; pids=()
 while [[ -s "$queue" || "$active" -gt 0 ]]; do
+  still_running=()
+  for pid in "${pids[@]}"; do
+    state="$(ps -p "$pid" -o stat= 2>/dev/null | tr -d ' ' || true)"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait "$pid" || { echo "A shard failed; inspect $runtime_dir" >&2; exit 1; }
+    else
+      still_running+=("$pid")
+    fi
+  done
+  pids=("${still_running[@]}")
+  active="${#pids[@]}"
   temp="$(temperature_c)"; avail="$(available_gb)"
   if [[ "$temp" != NA ]] && awk "BEGIN {exit !($temp >= $temp_stop)}"; then
     echo "CRITICAL temperature ${temp}C; stopping safely" | tee -a "$runtime_dir/controller.log"
@@ -74,13 +85,9 @@ while [[ -s "$queue" || "$active" -gt 0 ]]; do
     log="$runtime_dir/${shard}.log"
     echo "$(date -u +%FT%TZ),START,$shard,temp=$temp,available_gb=$avail" >> "$runtime_dir/controller.log"
     T2_RESUME=1 T2_WORKER_ID="$worker_id" Rscript scripts/run_shard.R "$mode" "$family" "$seed" "$engine" "$shard" >"$log" 2>&1 &
+    pids+=("$!")
     active=$((active + 1))
   done
-  if (( active > 0 )); then
-    wait -n || { echo "A shard failed; inspect $runtime_dir" >&2; exit 1; }
-    active=$((active - 1))
-  elif [[ -s "$queue" ]]; then
-    sleep 15
-  fi
+  sleep 15
 done
 echo "ADAPTIVE WORKER PASS $worker_id ($total shards)"
