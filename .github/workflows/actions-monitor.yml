@@ -1,0 +1,21 @@
+name: Actions monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      T2_WORKFLOW_FILE: smoke.yml
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/monitor_actions.py

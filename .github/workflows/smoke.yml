@@ -172,21 +172,67 @@ jobs:
       - id: matrix
         run: echo "matrix=$(Rscript scripts/actions_matrix.R github_actions)" >> "$GITHUB_OUTPUT"
 
+  backup-preflight:
+    needs: preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
+      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
+      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
+      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
+      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in T2_BACKUP_HOST T2_BACKUP_USER T2_BACKUP_ROOT T2_BACKUP_SSH_KEY T2_BACKUP_KNOWN_HOSTS TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET; do
+            [[ -n "${!name:-}" ]] || { echo "Missing Actions backup setting: $name" >&2; exit 2; }
+          done
+          [[ "$T2_BACKUP_ROOT" == /* && "$T2_BACKUP_ROOT" != *..* ]] || { echo "Invalid T2_BACKUP_ROOT" >&2; exit 2; }
+          echo "BACKUP PREFLIGHT PASS: cloud jobs have a configured local-backup route"
+
   full:
-    needs: [preflight, plan]
+    needs: [preflight, plan, backup-preflight]
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
-
+      max-parallel: 32
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
       T2_OUTPUT_ROOT: artifacts/ci
+      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
+      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
+      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
+      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
+      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
+      T2_CHECKPOINT_TRANSFER_SECONDS: '900'
     steps:
       - uses: actions/checkout@v4
+      - name: Connect runner to private backup network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Configure verified SSH backup endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$T2_BACKUP_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.3.3'
@@ -201,6 +247,18 @@ jobs:
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/
+      - name: Restore newest verified local-backup snapshot
+        if: env.T2_RESUME == '1'
+        continue-on-error: true
+        shell: bash
+        run: |
+          T2_OUTPUT_ROOT=artifacts/ci scripts/checkpoint_transfer.sh pull "$SHARD" || \
+            echo "No usable local snapshot; continuing with Actions artifact recovery"
+      - name: Start checkpoint backup loop
+        shell: bash
+        run: |
+          nohup scripts/checkpoint_sync_loop.sh "$SHARD" > checkpoint-sync.log 2>&1 &
+          echo $! > checkpoint-sync.pid
       - name: Run datasets
         run: Rscript scripts/run_stage.R datasets "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
@@ -281,3 +339,14 @@ jobs:
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
+      - name: Stop checkpoint backup loop and publish final snapshot
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -f checkpoint-sync.pid ]]; then
+            kill "$(cat checkpoint-sync.pid)" 2>/dev/null || true
+            wait "$(cat checkpoint-sync.pid)" 2>/dev/null || true
+          fi
+          scripts/checkpoint_transfer.sh push "$SHARD" || echo "Final backup transfer failed; inspect checkpoint-sync.log"
+          rm -f checkpoint-sync.pid

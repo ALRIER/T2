@@ -60,11 +60,20 @@ nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
  }
  colnames(accum)<-c('mse','q95');accum
 }
-nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(TRUE,26L)) {
+nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(TRUE,26L),shard=NULL) {
  set.seed(seed);n<-cfg$population; W<-nsga_initial(n,eligible)
  fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size)
  O<-fitness(W);history<-numeric();archiveW<-W;archiveO<-O; best_prior<- -Inf;stale<-0L
- for(g in seq_len(cfg$generations)) {
+ start_g<-1L; last_generation<-0L
+ resume<-t2_optimizer_restore(shard,'nsga2',cfg)
+ if(!is.null(resume)) {
+  st<-resume$state; W<-st$W; O<-st$O; archiveW<-st$archiveW; archiveO<-st$archiveO
+  history<-st$history; best_prior<-st$best_prior; stale<-st$stale
+  assign('.Random.seed',resume$rng,envir=.GlobalEnv)
+  start_g<-as.integer(resume$generation)+1L; last_generation<-as.integer(resume$generation)
+ }
+ if(start_g<=cfg$generations) for(g in seq.int(start_g,cfg$generations)) {
+  last_generation<-g
    ranks<-nsga_fast_sort(O)$ranks; crowd<-numeric(ncol(W))
    for(ix in nsga_fast_sort(O)$fronts) crowd[ix]<-nsga_crowding(O[ix,,drop=FALSE])
    # binary tournaments using Pareto ranks + crowding distance
@@ -79,7 +88,11 @@ nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=re
    indicator<- -min(rowSums(sweep(O,2L,pmax(colMeans(abs(O)),1e-12),'/')))
    history<-c(history,indicator)
    if(indicator>best_prior+cfg$improvement*max(1,abs(best_prior)) || !is.finite(best_prior)) {best_prior<-indicator;stale<-0L} else stale<-stale+1L
+   t2_optimizer_save(shard,'nsga2',cfg,g,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
+     history=history,best_prior=best_prior,stale=stale))
    if(stale>=cfg$patience) break
  }
+ t2_optimizer_save(shard,'nsga2',cfg,last_generation,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
+   history=history,best_prior=best_prior,stale=stale),force=TRUE)
  list(weights=archiveW,objectives=archiveO,history=history,generations_ran=length(history),seed=seed,stage='training_only')
 }
