@@ -1,0 +1,26 @@
+name: Actions Pulse
+on:
+  push:
+    paths:
+      - '.github/workflows/actions-pulse.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pulse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Actions runner and shard plan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+          rows = list(csv.DictReader(Path("config/shard_plan.csv").open()))
+          assert len(rows) == 192, f"Expected 192 shards, found {len(rows)}"
+          assert all(r["worker_id"] == "github_actions" for r in rows)
+          assert len({(r["family"], r["engine"], r["seed"]) for r in rows}) == 192
+          print("ACTIONS PULSE PASS: runner started, repository checked out, all 192 shards readable")
+          PY
