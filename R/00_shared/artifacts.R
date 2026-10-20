@@ -146,3 +146,38 @@ t2_emit_stage_artifacts <- function(out, shard, stage, mode, family, seed, start
              file.path(d$checkpoints, paste0(stage, '.status')))
   invisible(d)
 }
+
+# Optimizer-generation checkpoints are local to the current Actions runner.
+# A runner replacement requires these files to have been uploaded first.
+t2_optimizer_checkpoint_path <- function(shard, engine) {
+  file.path(t2_stage_dirs(shard, 'discovery')$checkpoints,
+            paste0('optimizer_', engine, '.rds'))
+}
+t2_optimizer_restore <- function(shard, engine, cfg) {
+  if (is.null(shard) || !nzchar(shard)) return(NULL)
+  path <- t2_optimizer_checkpoint_path(shard, engine)
+  if (!file.exists(path) || !identical(Sys.getenv('T2_RESUME', '0'), '1')) return(NULL)
+  x <- t2_read_rds(path)
+  if (!identical(x$engine, engine) ||
+      !identical(x$config, cfg) ||
+      !identical(x$commit, Sys.getenv('GITHUB_SHA', 'local'))) {
+    stop('Optimizer checkpoint provenance mismatch: ', engine)
+  }
+  x
+}
+t2_optimizer_save <- function(shard, engine, cfg, generation, state, force=FALSE) {
+  if (is.null(shard) || !nzchar(shard)) return(invisible(FALSE))
+  path <- t2_optimizer_checkpoint_path(shard, engine)
+  interval <- as.numeric(Sys.getenv('T2_CHECKPOINT_SECONDS', '900'))
+  if (!is.finite(interval) || interval < 1) stop('Invalid optimizer checkpoint interval')
+  # Generations are atomic: a checkpoint captures completed generations only.
+  stamp <- paste0(path, '.timestamp')
+  age <- if (file.exists(stamp)) as.numeric(difftime(Sys.time(), file.info(stamp)$mtime, units='secs')) else Inf
+  if (!force && age < interval) return(invisible(FALSE))
+  entry <- list(engine=engine, config=cfg, generation=as.integer(generation),
+                commit=Sys.getenv('GITHUB_SHA', 'local'),
+                rng=.Random.seed, state=state)
+  t2_atomic_save(entry, path)
+  writeLines(as.character(Sys.time()), stamp)
+  invisible(TRUE)
+}
