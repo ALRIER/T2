@@ -95,9 +95,15 @@ t2_run_mc_validation <- function(mode,shard) {
                     status=ifelse(c(l1,l2,l3,l4),'PASS','FAIL'),
                     stringsAsFactors=FALSE)
  overall<-if(all(results$status=='PASS')) 'PASS' else 'FAIL'
- list(status=overall,layers=results,seed=seed,scientific_scope=if(mode=='smoke')
+  anchor <- t2_run_mc_empirical_anchoring(mode, shard)
+  if (mode == 'full' && !identical(anchor$status, 'PASS')) overall <- 'FAIL'
+  list(status=overall, layers=results, empirical_anchor=anchor$status,
+       empirical_manifest=anchor$manifest,
+       results=list(empirical_anchor=if (!is.null(anchor$results)) anchor$results else
+                      data.frame(status=anchor$status, reason=anchor$reason)),
+       seed=seed, scientific_scope=if(mode=='smoke')
    'Interface smoke checks only; historical validation suite not certified' else
-   'Simplified numerical checks only; historical four-layer certification pending',
+   'MC numerical checks plus empirical shape anchoring; historical four-layer certification pending',
    legacy_four_layer_certified=FALSE)
 }
 t2_run_discovery <- function(data,mode,shard,engine='all'){

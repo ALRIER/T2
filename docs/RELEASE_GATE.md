@@ -4,7 +4,7 @@ Status: NOT READY FOR FULL EXPERIMENT.
 
 - Stage order now enforces dataset manifest verification and Monte Carlo validation before simulation and Discovery.
 - The four original legacy validation layers are preserved as source but are not ported into the current function environment. The current four quick numerical checks are NOT equivalent to the historical scientific suite. Full mode rejects them.
-- The historical Monte Carlo empirical-anchoring layer is distinct from the final real-world external battery. Its five-anchor plan is recorded in `config/mc_validation_datasets.csv`, but acquisition, hashing, and shape-hull execution are not yet integrated.
+- The historical Monte Carlo empirical-anchoring layer is distinct from the final real-world external battery. Its five-anchor adapter and shape-range execution are integrated, but acquisition, licensing, and final hashing are still pending.
 - Current public datasets manifest contains only a checked-in test fixture. Full mode rejects it.
 - Full realworld and stress stages currently stop deliberately.
 - Checkpoints are local RDS artifacts; cross-workflow durable restoration and hash/version binding are not yet proven.

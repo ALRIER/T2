@@ -1,7 +1,7 @@
 t2_load <- function(root='.') {
  source(file.path(root,'R/00_shared/artifacts.R'),local=.GlobalEnv)
  files<-c('R/00_shared/config.R','R/00_shared/estimators_26.R','R/00_shared/models.R',
- 'R/01_monte_carlo/distributions.R','R/01_monte_carlo/contamination.R','R/01_monte_carlo/scenarios.R',
+ 'R/01_monte_carlo/distributions.R','R/01_monte_carlo/contamination.R','R/01_monte_carlo/scenarios.R','R/01_monte_carlo/empirical_anchoring.R',
  'R/01_monte_carlo/design.R','R/02_discovery/matrix_fitness.R','R/02_discovery/pareto.R',
  'R/02_discovery/nsga2.R','R/02_discovery/evolutionary_competitors.R','R/03_heldout/frozen_evaluation.R',
  'R/04_real_datasets/frozen_realworld.R','R/04_real_datasets/realworld_integrated.R','R/04_real_datasets/dataset_pipeline.R',

@@ -2,7 +2,7 @@
   "status": "development-integration",
   "full_run_ready": false,
   "validation_layers": {
-    "mc_empirical_anchoring": "planned_manifest_only_not_integrated",
+    "mc_empirical_anchoring": "adapter_integrated_inputs_and_hashes_pending",
     "realworld_external_battery": "fixture_smoke_only_not_integrated"
   },
   "required_before_full": [

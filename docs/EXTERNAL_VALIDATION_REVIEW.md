@@ -67,12 +67,12 @@ independent primary datasets.
 
 ## Consequence for T2
 
-This review identifies the intended external sources and scientific rationale, but
-it is not yet a T2 full-run manifest. Before enabling `mode=full`, T2 still needs a
-reviewed acquisition manifest containing one stable local path, source URL,
-license, transformation, and SHA-256 digest for every accepted input. Until that
-manifest is checked in and the external adapter is integrated, the fixture-only
-smoke run remains the only intentionally passing real-world mode.
+This review identifies the intended external sources and scientific rationale. T2
+now has a separate MC anchoring adapter and shape-range check, but its five input
+files still need acquisition, license review, and final SHA-256 values. Before
+enabling full mode, T2 also needs the final external-battery adapter and its
+reviewed manifest. Until those inputs are checked in, the fixture-only smoke run
+remains the only intentionally passing real-world mode.
 
 The current implementation therefore keeps the full real-world and stress gates
 closed rather than silently substituting fixtures for empirical evidence.

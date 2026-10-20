@@ -109,6 +109,7 @@ t2_emit_stage_artifacts <- function(out, shard, stage, mode, family, seed, start
   d <- t2_stage_dirs(shard, stage)
   t2_atomic_save(out, file.path(d$results, paste0(stage, '.rds')))
   if (!is.null(out$manifest)) t2_write_csv(out$manifest, file.path(d$raw, 'dataset_manifest.csv'))
+  if (!is.null(out$empirical_manifest)) t2_write_csv(out$empirical_manifest, file.path(d$raw, 'mc_empirical_manifest.csv'))
   if (!is.null(out$layers)) t2_write_csv(out$layers, file.path(d$results, 'validation_layers.csv'))
   if (!is.null(out$grid)) t2_write_csv(out$grid, file.path(d$raw, 'scenario_grid.csv'))
   if (!is.null(out$scenarios)) for (i in seq_along(out$scenarios))
