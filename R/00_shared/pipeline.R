@@ -36,7 +36,7 @@ t2_models <- function(d) {
 t2_require <- function(shard,stage) {
  path<-t2_path(shard,stage)
  if(!file.exists(path))stop(paste('Required stage missing:',stage,'for',shard))
- readRDS(path)
+ t2_read_rds(path)
 }
 t2_inference <- function(T,models,target,stage,seed) {
  model_comparison_table(T,models,target,benchmark_id='mean',stage=stage,B=ga_config$bootstrap_B,seed=seed)
