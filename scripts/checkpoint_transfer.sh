@@ -8,7 +8,7 @@ shard="${2:?Missing shard}"
 : "${T2_BACKUP_HOST:?Set T2_BACKUP_HOST to the SSH/Tailscale hostname}"
 : "${T2_BACKUP_USER:?Set T2_BACKUP_USER}"
 : "${T2_BACKUP_ROOT:?Set T2_BACKUP_ROOT to an absolute destination path}"
-[[ "$T2_BACKUP_ROOT" == /* && "$T2_BACKUP_ROOT" != *".."* ]] || { echo "Invalid backup root" >&2; exit 2; }
+[[ "$T2_BACKUP_ROOT" =~ ^/[A-Za-z0-9_./-]+$ && "$T2_BACKUP_ROOT" != *".."* ]] || { echo "Invalid backup root" >&2; exit 2; }
 [[ "$T2_BACKUP_HOST" =~ ^[A-Za-z0-9.-]+$ && "$T2_BACKUP_USER" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid SSH target" >&2; exit 2; }
 command -v rsync >/dev/null && command -v ssh >/dev/null || { echo "Requires rsync and ssh" >&2; exit 2; }
 root="${T2_OUTPUT_ROOT:-artifacts/ci}"
