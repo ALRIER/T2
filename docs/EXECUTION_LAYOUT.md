@@ -2,6 +2,8 @@
 
 Every independent run is a shard identified by family, optimizer engine and seed. The default output root is `artifacts/`; CI can override it with `T2_OUTPUT_ROOT`.
 
+`T2_MAX_FILE_MB` controls the maximum artifact part size and defaults to `25`. Oversized CSVs are split into `.part-####.csv` files; oversized RDS payloads are split into `.part-####` files with a small RDS index and SHA-256 checksums. A stage cannot receive a `COMPLETE` marker if any artifact part is missing, oversized or corrupt.
+
 ```text
 artifacts/<shard>/<stage>/
   raw/          immutable inputs and generated matrices
