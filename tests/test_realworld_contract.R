@@ -1,0 +1,8 @@
+source('R/00_shared/load_all.R'); t2_load('.')
+source('R/00_shared/pipeline.R')
+m <- t2_realworld_manifest()
+checked <- t2_realworld_validate_manifest(m, 'smoke')
+stopifnot(nrow(checked) == nrow(m), all(nzchar(checked$sha256_actual)))
+full_error <- tryCatch({ t2_realworld_validate_manifest(m, 'full'); FALSE }, error = function(e) TRUE)
+stopifnot(full_error)
+cat('REALWORLD MANIFEST CONTRACT PASS\n')

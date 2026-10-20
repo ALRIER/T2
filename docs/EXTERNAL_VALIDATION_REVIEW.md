@@ -68,12 +68,14 @@ independent primary datasets.
 ## Consequence for T2
 
 This review identifies the intended external sources and scientific rationale. T2
-now has a separate MC anchoring adapter and shape-range check. The L1--L3
+now has a separate MC anchoring adapter and shape-range check. The final
+real-world adapter is integrated, but its local passing mode is explicitly
+fixture-only until the reviewed public manifest is populated. The L1--L3
 historical audit layers are integrated and pass the local smoke contract. Four
 anchors are stored locally with hashes; SPY remains an external
 non-redistributable input and cannot be checked into the public repository.
 Before enabling full mode, T2 needs a policy-approved private-input path for
-SPY and the final external-battery adapter and manifest.
+SPY and the reviewed public manifest/cache for the final external battery.
 Until those gates are satisfied, the fixture-only smoke run remains the only
 intentionally passing real-world mode.
 

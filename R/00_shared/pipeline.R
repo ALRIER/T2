@@ -60,7 +60,8 @@ t2_run_datasets <- function(mode,shard) {
  tab <- read.csv(manifest,stringsAsFactors=FALSE)
  if (!all(c('dataset_id','path','sha256','license') %in% names(tab))) stop('Incomplete dataset manifest')
  if (!nrow(tab)) stop('No datasets registered; cannot pass')
- if (mode=='full' && any(grepl('fixture',tab$license,ignore.case=TRUE))) stop('Fixtures are prohibited in full runs')
+ if (mode=='full' && any(grepl('fixture|nonredistributable|review|pending|unknown',tab$license,ignore.case=TRUE)))
+   stop('Full runs require reviewed redistributable public inputs')
  if (any(!nzchar(tab$license))) stop('Dataset license not documented')
  if (any(!file.exists(tab$path))) stop('Dataset cache is incomplete')
  hashes <- unname(tools::md5sum(tab$path))
@@ -115,7 +116,10 @@ t2_run_discovery <- function(data,mode,shard,engine='all'){
  cfg<-ga_config
  if(mode=='smoke'){cfg$population<-8L;cfg$generations<-2L;cfg$patience<-2L;cfg$bootstrap_B<-100L}
  s<-data$scenarios
- engines<-list(nsga2=nsga_discover(s,cfg,t2_seed(shard,201)),de=de_discover(s,cfg,t2_seed(shard,202)),dirichlet=dirichlet_discover(s,cfg,t2_seed(shard,203),n_draws=cfg$population*(cfg$generations+1L)))
+ engines<-list(ga=ga_discover(s,cfg,t2_seed(shard,201)),
+               nsga2=nsga_discover(s,cfg,t2_seed(shard,202)),
+               de=de_discover(s,cfg,t2_seed(shard,203)),
+               dirichlet=dirichlet_discover(s,cfg,t2_seed(shard,204),n_draws=cfg$population*(cfg$generations+1L)))
  if (engine != 'all') engines <- engines[engine]
  list(engines=engines,models=t2_models(engines),config=cfg,seed=t2_seed(shard,200))
 }
@@ -130,12 +134,7 @@ t2_run_heldout <- function(discovery,mode,shard,family='normal') {
  list(scores=do.call(rbind,by_n),models=discovery$models,stage='heldout',fresh_rng=TRUE)
 }
 t2_run_realworld <- function(discovery,mode,shard) {
- # A deterministic non-sensitive fixture verifies the external-data interface.
- # Full mode MUST receive reviewed public datasets, not synthetic fixtures.
- if(mode=='full') stop('Public real-world dataset manifest and fetch/verification adapter have not been configured')
- set.seed(t2_seed(shard,501));x<-rnorm(1100L)
- p<-realworld_prepare(x,sample_sizes=c(200L,1000L,3000L),R=30L,seed=t2_seed(shard,502))
- list(scores=realworld_compare_models(p,discovery$models,dataset_id='fixture'),fixture=TRUE)
+ t2_run_realworld_public(discovery, mode, shard)
 }
 t2_run_stress <- function(discovery,mode,shard,family='normal') {
  if(mode=='full')stop('Real-world stress manifest is not configured')

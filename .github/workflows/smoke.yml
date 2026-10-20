@@ -38,6 +38,9 @@ jobs:
       - run: Rscript tests/test_smoke.R
       - run: Rscript tests/test_v3_design.R
       - run: Rscript tests/test_v4_integration.R
+      - run: Rscript tests/test_historical_mc_contract.R
+      - run: Rscript tests/test_engine_contract.R
+      - run: Rscript tests/test_realworld_contract.R
 
   smoke:
     needs: preflight
@@ -160,7 +163,7 @@ jobs:
       matrix:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
         seed: [0, 1, 2, 3, 4, 5, 6, 7]
-        engine: [nsga2, de, dirichlet]
+        engine: [ga, nsga2, de, dirichlet]
     env:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}

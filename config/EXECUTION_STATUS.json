@@ -3,11 +3,12 @@
   "full_run_ready": false,
   "validation_layers": {
     "mc_empirical_anchoring": "four_anchors_acquired_one_nonredistributable_external",
-    "realworld_external_battery": "fixture_smoke_only_not_integrated"
+    "realworld_external_battery": "adapter_integrated_fixture_smoke_only"
   },
   "required_before_full": [
     "reviewed public dataset manifests and checksums for MC empirical anchoring and final real-world battery",
     "approved private or otherwise redistributable fifth MC empirical input",
+    "reviewed public manifest and cached inputs for final real-world battery",
     "independent heldout regime partition",
     "objective evaluation parity and budgets",
     "multi-run recovery verification",
