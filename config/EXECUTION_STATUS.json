@@ -1,8 +1,12 @@
 {
   "status": "development-integration",
   "full_run_ready": false,
+  "validation_layers": {
+    "mc_empirical_anchoring": "planned_manifest_only_not_integrated",
+    "realworld_external_battery": "fixture_smoke_only_not_integrated"
+  },
   "required_before_full": [
-    "reviewed public dataset manifest and checksums",
+    "reviewed public dataset manifests and checksums for MC empirical anchoring and final real-world battery",
     "complete historical audits integrated",
     "independent heldout regime partition",
     "objective evaluation parity and budgets",

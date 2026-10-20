@@ -1,0 +1,6 @@
+dataset_id,source_url,local_path,loader,transform,matched_family,purpose,license,sha256
+DS1_Wine_Alcohol,https://archive.ics.uci.edu/ml/machine-learning-databases/wine/wine.data,data/mc_validation/DS1_Wine_Alcohol.csv,uci_wine,alcohol_column,normal,empirical_shape_anchor,,
+DS2_ForestFires_logArea,https://archive.ics.uci.edu/ml/machine-learning-databases/forest-fires/forestfires.csv,data/mc_validation/DS2_ForestFires_logArea.csv,uci_forestfires,log_area_plus_one,lognormal,empirical_shape_anchor,,
+DS3_GBSG2_Survival,https://vincentarelbundock.github.io/Rdatasets/csv/survival/gbsg.csv,data/mc_validation/DS3_GBSG2_Survival.csv,rdatasets_gbsg,uncensored_positive_survival_time,weibull,empirical_shape_anchor,,
+DS4_RT_LexicalDecision,,data/mc_validation/DS4_RT_LexicalDecision.csv,rtdists_or_public_fallback,correct_response_clean_seconds,exgaussian_exwald,empirical_shape_anchor,,
+DS5_SPY_LogReturns,https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=max&interval=1d,data/mc_validation/DS5_SPY_LogReturns.csv,market_returns,daily_log_return,heavy_tail,empirical_shape_anchor,,
