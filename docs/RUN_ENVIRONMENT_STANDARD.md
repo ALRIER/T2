@@ -67,6 +67,17 @@ bash scripts/run_adaptive_worker.sh physical_strong full config/shard_plan.csv
 
 El supervisor reserva núcleos, limita la memoria disponible, observa sensores térmicos y solo aumenta la concurrencia después de lecturas estables. Al alcanzar el umbral de advertencia deja de iniciar shards; al alcanzar el umbral crítico detiene el lote de forma segura. `T2_ALLOW_NO_TEMP_SENSOR=1` solo debe usarse después de verificar manualmente la temperatura del equipo.
 
+## Calibración obligatoria
+
+Antes de aceptar la cuota de un equipo físico, ejecutar un shard full representativo con un solo worker:
+
+```bash
+bash scripts/calibrate_worker.sh physical_strong full config/shard_plan.csv
+bash scripts/calibrate_worker.sh physical_local full config/shard_plan.csv
+```
+
+El resultado queda en `runtime/calibration/<worker>/result.csv` y el log en la misma carpeta. Durante la calibración se debe observar la temperatura sostenida. La cuota definitiva se calcula con el tiempo medido y el número de workers que el supervisor mantuvo sin superar los límites térmicos. La cuota inicial de `config/shard_plan.csv` es solo una propuesta y no debe interpretarse como una asignación validada.
+
 Ejemplo de shard:
 
 ```text
