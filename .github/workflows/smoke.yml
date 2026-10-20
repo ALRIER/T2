@@ -61,7 +61,7 @@ jobs:
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
       T2_OUTPUT_ROOT: artifacts/ci
       T2_REALWORLD_MANIFEST: config/public_datasets_smoke.csv
-      T2_REALWORLD_REPS: '3'
+      T2_REALWORLD_REPS: '20'
       T2_REALWORLD_SAMPLE_SIZES: '200'
     steps:
       - uses: actions/checkout@v4
