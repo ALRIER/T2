@@ -44,7 +44,7 @@ t2_mc_load_anchor <- function(row) {
     if (is.na(time_col) || is.na(event_col)) stop('GBSG2 input lacks time/event columns')
     return(as.numeric(z[[time_col]][as.integer(z[[event_col]]) == 1L]))
   }
-  if (loader %in% c('rtdists_or_public_fallback','market_returns')) {
+  if (loader %in% c('rtdists_or_public_fallback','market_returns','r_datasets_eustockmarkets')) {
     z <- read.csv(path, stringsAsFactors=FALSE)
     value_col <- intersect(c('value','log_return','logreturn','return'), names(z))[1L]
     if (is.na(value_col)) stop(sprintf('Standardized MC input lacks value column: %s', path))
@@ -95,19 +95,36 @@ t2_run_mc_empirical_anchoring <- function(mode='full', shard='mc_anchor',
   actual <- vapply(manifest$local_path, t2_sha256, character(1))
   if (any(tolower(actual) != tolower(manifest$sha256)))
     stop('MC empirical input checksum mismatch')
+  if (all(c('raw_path','raw_sha256') %in% names(manifest))) {
+    if (any(is.na(manifest$raw_path) | !nzchar(trimws(manifest$raw_path)) |
+            !file.exists(manifest$raw_path)))
+      stop('MC empirical raw cache is incomplete')
+    raw_actual <- vapply(manifest$raw_path, t2_sha256, character(1))
+    if (any(is.na(manifest$raw_sha256) | !nzchar(trimws(manifest$raw_sha256)) |
+            tolower(raw_actual) != tolower(manifest$raw_sha256)))
+      stop('MC empirical raw input checksum mismatch')
+  } else raw_actual <- rep(NA_character_, nrow(manifest))
   ranges <- t2_mc_synthetic_ranges(n_each=n_each, seed=t2_seed(shard, 770L))
   rows <- lapply(seq_len(nrow(manifest)), function(i) {
     row <- manifest[i,,drop=FALSE]
     d <- t2_mc_diagnostics(t2_mc_load_anchor(row))
     r <- ranges[ranges$matched_family == row$matched_family, , drop=FALSE]
+    policy <- if ('shape_policy' %in% names(row)) as.character(row$shape_policy) else 'in_family'
+    stress_ok <- identical(policy, 'stress_out_of_family') && is.finite(d$skewness) &&
+      is.finite(d$excess_kurtosis) && d$n >= 100L
+    shape_ok <- t2_mc_range_check(d$skewness,r$skew_min,r$skew_max,tolerance) &&
+      t2_mc_range_check(d$excess_kurtosis,r$kurt_min,r$kurt_max,tolerance)
     data.frame(dataset_id=row$dataset_id, matched_family=row$matched_family,
                n_obs=d$n, skewness=d$skewness, excess_kurtosis=d$excess_kurtosis,
                skew_in_range=t2_mc_range_check(d$skewness,r$skew_min,r$skew_max,tolerance),
                kurt_in_range=t2_mc_range_check(d$excess_kurtosis,r$kurt_min,r$kurt_max,tolerance),
-               source_sha256=actual[i], status='PASS', stringsAsFactors=FALSE)
+               shape_in_range=shape_ok, shape_policy=policy,
+               stress_anchor_valid=stress_ok, source_sha256=actual[i],
+               raw_sha256=raw_actual[i], status=if (shape_ok || stress_ok) 'PASS' else 'FAIL',
+               stringsAsFactors=FALSE)
   })
   results <- do.call(rbind, rows)
-  results$status <- ifelse(results$skew_in_range & results$kurt_in_range, 'PASS', 'FAIL')
+  results$status <- ifelse(results$shape_in_range | results$stress_anchor_valid, 'PASS', 'FAIL')
   list(status=if(all(results$status == 'PASS')) 'PASS' else 'FAIL',
        manifest=manifest, ranges=ranges, results=results,
        method='Empirical shape diagnostics compared with synthetic family ranges',

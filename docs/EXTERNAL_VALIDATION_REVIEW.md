@@ -24,7 +24,7 @@ shape family:
 | DS2 | UCI Forest Fires | `log(area + 1)` | lognormal | Positive right-skewed profile |
 | DS3 | GBSG2 survival | Uncensored positive survival time | Weibull | Positive time-to-event profile |
 | DS4 | Lexical-decision reaction times (`rtdists`/fallback) | Correct responses, cleaned to seconds | ex-Gaussian / ex-Wald | Canonical right-skewed reaction-time profile |
-| DS5 | Yahoo Finance SPY | Daily log returns | heavy-tail stress profile | Fat-tailed financial returns |
+| DS5 | `datasets::EuStockMarkets` DAX | Daily log returns | normal-family stress anchor | Redistributable financial returns with heavy tails |
 
 This layer validates whether the simulated parameter grid covers empirical shapes;
 it does not evaluate frozen GA winners.
@@ -71,11 +71,13 @@ This review identifies the intended external sources and scientific rationale. T
 now has a separate MC anchoring adapter and shape-range check. The final
 real-world adapter is integrated, but its local passing mode is explicitly
 fixture-only until the reviewed public manifest is populated. The L1--L3
-historical audit layers are integrated and pass the local smoke contract. Four
-anchors are stored locally with hashes; SPY remains an external
-non-redistributable input and cannot be checked into the public repository.
-Before enabling full mode, T2 needs a policy-approved private-input path for
-SPY and the reviewed public manifest/cache for the final external battery.
+historical audit layers are integrated and pass the local smoke contract. The
+five-input full L4 gate now uses a redistributable R-packaged financial anchor;
+DS1 and DS5 are explicitly recorded as stress/out-of-family diagnostics when
+their observed shape falls outside the synthetic envelope. All five
+anchors are stored locally with raw/processed hashes. Before enabling full mode,
+T2 still needs the reviewed public manifest/cache for the final external
+battery.
 Until those gates are satisfied, the fixture-only smoke run remains the only
 intentionally passing real-world mode.
 

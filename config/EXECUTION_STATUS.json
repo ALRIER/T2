@@ -2,13 +2,12 @@
   "status": "development-integration",
   "full_run_ready": false,
   "validation_layers": {
-    "mc_empirical_anchoring": "four_anchors_acquired_one_nonredistributable_external",
+    "mc_empirical_anchoring": "five_anchors_acquired_with_two_explicit_stress_out_of_family_policies",
     "realworld_external_battery": "adapter_integrated_fixture_smoke_only",
     "github_actions_recovery": "verified_cross_workflow_artifact_restore_and_stage_skip"
   },
   "required_before_full": [
     "reviewed public dataset manifests and checksums for MC empirical anchoring and final real-world battery",
-    "approved private or otherwise redistributable fifth MC empirical input",
     "reviewed public manifest and cached inputs for final real-world battery",
     "independent heldout regime partition",
     "objective evaluation parity and budgets",

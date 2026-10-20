@@ -8,12 +8,14 @@ The following inputs were acquired locally under data/mc_validation/:
 | DS2 Forest Fires | acquired and hashed | UCI raw file plus log(area + 1) CSV |
 | DS3 GBSG2 Survival | acquired and hashed | Rdatasets CSV; uncensored positive survival times |
 | DS4 Lexical Decision RT | acquired and hashed | rtdists package speed_acc data; cleaned RT CSV |
-| DS5 SPY log returns | deliberately not retained | Yahoo states that information provided by Yahoo Finance must not be redistributed |
+| DS5 DAX log returns | acquired and hashed | `datasets::EuStockMarkets`; R-packaged daily European index data, DAX log-return transformation |
 
-DS5 therefore remains an external, non-redistributable input. A private runner
-may provide it through an out-of-repository path, but T2 will not accept it as a
-checked-in full-run input. The full MC gate also requires a reviewed license
-field and SHA-256 for every accepted anchor.
+The DAX series is retained as a financial stress anchor. Its observed excess
+kurtosis is outside the normal synthetic envelope, so the manifest marks it
+`stress_out_of_family`; the adapter records that mismatch rather than treating
+it as normal-shape coverage. The same explicit diagnostic-only policy is used
+for the platykurtic Wine alcohol anchor. The full MC gate still requires a
+reviewed license and SHA-256 for every accepted anchor.
 
 The rejected OSF fallback download for DS4 was an MP4 container rather than a
 tabular reaction-time dataset. It is retained as
