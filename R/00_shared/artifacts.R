@@ -28,9 +28,11 @@ t2_atomic_save <- function(x, path) {
   part_size <- floor(t2_max_file_bytes())
   if (part_size < 1024L) stop('T2_MAX_FILE_MB is too small')
   parts <- character()
+  part_dir <- paste0(path, '.parts')
+  dir.create(part_dir, recursive=TRUE, showWarnings=FALSE)
   for (start in seq.int(1L, length(raw), by=part_size)) {
     end <- min(length(raw), start + part_size - 1L)
-    part <- sprintf('%s.part-%04d', path, length(parts) + 1L)
+    part <- file.path(part_dir, sprintf('part-%04d', length(parts) + 1L))
     part_tmp <- paste0(part, '.', Sys.getpid(), '.tmp')
     writeBin(raw[start:end], part_tmp)
     if (!file.rename(part_tmp, part)) stop('Failed atomic artifact part write')
@@ -39,7 +41,9 @@ t2_atomic_save <- function(x, path) {
   # Keep part names relative so a checkpoint can move between runners.
   index <- list(t2_chunked_rds=TRUE, parts=basename(parts), bytes=length(raw),
                 sha256=vapply(parts, t2_sha256, character(1)))
-  saveRDS(index, path)
+  index_tmp <- paste0(path, '.', Sys.getpid(), '.index.tmp')
+  saveRDS(index, index_tmp)
+  if (!file.rename(index_tmp, path)) stop('Failed atomic RDS index write')
   invisible(path)
 }
 
