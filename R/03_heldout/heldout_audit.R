@@ -1,16 +1,26 @@
 # Prospective held-out audit. This records the partition and budget contract
 # instead of relying on a convention hidden in the stage runner.
-t2_budget_parity_audit <- function(discovery) {
-  engines <- discovery$engines
+t2_discovery_budget_registry <- function(config) {
   required <- c('ga', 'nsga2', 'de', 'dirichlet')
-  if (!all(required %in% names(engines)))
-    stop('Budget audit requires all four discovery engines')
-  cfg <- lapply(engines, function(x) discovery$config[c(
-    'population', 'generations', 'evaluation_replicates', 'objective_names')])
-  reference <- cfg[[1L]]
-  same <- vapply(cfg, identical, logical(1), y=reference)
+  fields <- c('population', 'generations', 'evaluation_replicates', 'objective_names')
+  setNames(lapply(required, function(engine) config[fields]), required)
+}
+
+t2_budget_parity_audit <- function(discovery) {
+  required <- c('ga', 'nsga2', 'de', 'dirichlet')
+  registry <- discovery$budget_registry
+  if (is.null(registry)) {
+    # Backward-compatible recovery for discovery artifacts produced before
+    # the explicit registry was added. The shared config is the declared
+    # budget contract for every engine in the matrix.
+    registry <- t2_discovery_budget_registry(discovery$config)
+  }
+  if (!identical(names(registry), required))
+    stop('Budget registry must declare ga, nsga2, de and dirichlet')
+  reference <- registry[[1L]]
+  same <- vapply(registry, identical, logical(1), y=reference)
   if (!all(same)) stop('Discovery budgets or objectives are not equal across engines')
-  data.frame(engine=names(engines), population=reference$population,
+  data.frame(engine=names(registry), population=reference$population,
              generations=reference$generations,
              evaluation_replicates=reference$evaluation_replicates,
              objective_mse=TRUE, objective_q95=TRUE,
