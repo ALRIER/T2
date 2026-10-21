@@ -27,7 +27,8 @@ relative_files <- c(
   'scripts/build_confirmatory_r_datasets.R',
   'scripts/run_confirmatory.R',
   'tests/test_confirmatory_contract.R',
-  list.files('data/confirmatory', recursive = TRUE, full.names = FALSE)
+  file.path('data', 'confirmatory',
+            list.files('data/confirmatory', recursive = TRUE, full.names = FALSE))
 )
 relative_files <- sort(unique(relative_files))
 relative_files <- relative_files[file.exists(file.path(repo_root, relative_files))]
