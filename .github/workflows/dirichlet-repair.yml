@@ -25,62 +25,21 @@ jobs:
       max-parallel: 8
       matrix:
         include:
-          - family: exgaussian
-            engine: dirichlet
-            seed: 3
-          - family: exgaussian
-            engine: dirichlet
-            seed: 5
-          - family: exgaussian
-            engine: dirichlet
-            seed: 7
-          - family: exwald
-            engine: de
-            seed: 0
-          - family: exwald
-            engine: de
-            seed: 1
-          - family: exwald
-            engine: de
+          - family: normal
             seed: 2
-          - family: exwald
-            engine: de
-            seed: 3
-          - family: exwald
-            engine: de
-            seed: 4
-          - family: exwald
-            engine: de
-            seed: 5
-          - family: exwald
-            engine: de
-            seed: 7
-          - family: exwald
-            engine: dirichlet
+          - family: lognormal
             seed: 0
-          - family: exwald
-            engine: dirichlet
-            seed: 1
-          - family: exwald
-            engine: dirichlet
-            seed: 2
-          - family: exwald
-            engine: dirichlet
-            seed: 4
-          - family: exwald
-            engine: dirichlet
+          - family: lognormal
             seed: 5
-          - family: exwald
-            engine: dirichlet
+          - family: invgauss
+            seed: 2
+          - family: invgauss
             seed: 6
-          - family: exwald
-            engine: nsga2
-            seed: 3
-          - family: exwald
-            engine: nsga2
+          - family: exgaussian
             seed: 4
           - family: exwald
-            engine: nsga2
+            seed: 3
+          - family: exwald
             seed: 7
     env:
       T2_RESUME: '1'
