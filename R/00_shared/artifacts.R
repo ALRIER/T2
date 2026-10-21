@@ -52,7 +52,9 @@ t2_read_rds <- function(path) {
   if (!is.list(x) || !isTRUE(x$t2_chunked_rds)) return(x)
   if (!length(x$parts)) stop('Chunked RDS is incomplete')
   part_paths <- vapply(x$parts, function(p) {
-    if (grepl('^/', p)) p else file.path(paste0(path, '.parts'), basename(p))
+    if (grepl('^/', p)) return(p)
+    modern <- file.path(paste0(path, '.parts'), basename(p))
+    if (file.exists(modern)) modern else file.path(dirname(path), basename(p))
   }, character(1))
   if (!all(file.exists(part_paths))) stop('Chunked RDS is incomplete')
   if (!identical(unname(vapply(part_paths, t2_sha256, character(1))), unname(x$sha256)))
