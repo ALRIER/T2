@@ -1,0 +1,2 @@
+package_id,zenodo_record_id,doi,archive_name,sha256,role,publication_status
+T2_CONFIRMATORY_V1,23547992,10.5281/zenodo.23547992,T2_CONFIRMATORY_V1.tar.gz,a56d777fb9928d78a2fb2e4eb02cc3d821cee1b84b7a0d50aec73d63e82efcf4,recovery_copy,public

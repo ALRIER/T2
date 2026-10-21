@@ -33,3 +33,9 @@ processed file and applies no hidden transformation (`transform=raw`).
 Large raw-error files are checkpointed and uploaded as chunked artifacts. Git
 stores the protocol, manifests, code, summaries, and checksums; it does not
 store a large generated error matrix.
+
+The frozen input package is also published as a neutral recovery copy at
+`10.5281/zenodo.23547992`. Actions does not depend on this external copy for
+the normal run: the workflow takes its code, frozen models, and external input
+files from the repository. The Zenodo package is used for recovery and
+independent archival verification.
