@@ -1,0 +1,79 @@
+name: Extended Monte Carlo (seeds 09-20)
+on:
+  push:
+    branches: [experiment/montecarlo-seeds-09-20]
+    paths: ['.github/workflows/extended-montecarlo.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  new-canonical-montecarlo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        seed: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    env:
+      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
+      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
+      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
+      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
+      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
+      T2_CHECKPOINT_TRANSFER_SECONDS: '900'
+      T2_BACKUP_LOCAL_DIR: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}
+      T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
+      T2_MC_WORKERS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/check_environment.R
+      - name: Connect to private backup network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Configure verified SSH backup endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$T2_BACKUP_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
+      - name: Start periodic checkpoint backup
+        shell: bash
+        run: |
+          nohup scripts/checkpoint_sync_loop.sh "extended-${{ matrix.family }}-${{ matrix.seed }}" > checkpoint-sync.log 2>&1 &
+          echo $! > checkpoint-sync.pid
+      - name: Generate and verify new canonical Monte Carlo block
+        run: Rscript tools/extended_mc.R "${{ matrix.family }}" "${{ matrix.seed }}"
+      - name: Upload canonical data and checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extended-mc-${{ matrix.family }}-seed-${{ matrix.seed }}
+          path: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Stop periodic backup and publish final snapshot
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -f checkpoint-sync.pid ]]; then
+            kill "$(cat checkpoint-sync.pid)" 2>/dev/null || true
+            wait "$(cat checkpoint-sync.pid)" 2>/dev/null || true
+          fi
+          scripts/checkpoint_transfer.sh push "extended-${{ matrix.family }}-${{ matrix.seed }}" || true
+          rm -f checkpoint-sync.pid
