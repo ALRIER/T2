@@ -11,12 +11,6 @@ on:
         description: 'Run containing the canonical Monte Carlo packages and shared validation'
         required: true
         type: string
-      scope:
-        description: 'Repair set to execute'
-        required: false
-        default: failed
-        type: choice
-        options: [failed, incomplete]
 
 permissions:
   contents: read
@@ -24,7 +18,6 @@ permissions:
 
 jobs:
   repair:
-    if: inputs.scope == matrix.scope
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -34,101 +27,20 @@ jobs:
         include:
           - family: normal
             seed: 2
-            scope: failed
           - family: lognormal
             seed: 0
-            scope: failed
           - family: lognormal
             seed: 5
-            scope: failed
           - family: invgauss
             seed: 2
-            scope: failed
           - family: invgauss
             seed: 6
-            scope: failed
           - family: exgaussian
             seed: 4
-            scope: failed
           - family: exwald
             seed: 3
-            scope: failed
           - family: exwald
             seed: 7
-            scope: failed
-          - family: exgaussian
-            seed: 3
-            scope: incomplete
-          - family: exgaussian
-            seed: 5
-            scope: incomplete
-          - family: exgaussian
-            seed: 7
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 0
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 1
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 2
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 3
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 4
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 5
-            scope: incomplete
-          - family: exwald
-            engine: de
-            seed: 7
-            scope: incomplete
-          - family: exwald
-            engine: dirichlet
-            seed: 0
-            scope: incomplete
-          - family: exwald
-            engine: dirichlet
-            seed: 1
-            scope: incomplete
-          - family: exwald
-            engine: dirichlet
-            seed: 2
-            scope: incomplete
-          - family: exwald
-            engine: dirichlet
-            seed: 4
-            scope: incomplete
-          - family: exwald
-            engine: dirichlet
-            seed: 5
-            scope: incomplete
-          - family: exwald
-            engine: dirichlet
-            seed: 6
-            scope: incomplete
-          - family: exwald
-            engine: nsga2
-            seed: 3
-            scope: incomplete
-          - family: exwald
-            engine: nsga2
-            seed: 4
-            scope: incomplete
-          - family: exwald
-            engine: nsga2
-            seed: 7
-            scope: incomplete
     env:
       T2_RESUME: '1'
       T2_FRESH_OPTIMIZER: '1'
