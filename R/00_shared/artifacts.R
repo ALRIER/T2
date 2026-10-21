@@ -198,9 +198,14 @@ t2_optimizer_restore <- function(shard, engine, cfg) {
   path <- t2_optimizer_checkpoint_path(shard, engine)
   if (!file.exists(path) || !identical(Sys.getenv('T2_RESUME', '0'), '1')) return(NULL)
   x <- t2_read_rds(path)
+  same_commit <- identical(x$commit, Sys.getenv('GITHUB_SHA', 'local'))
+  legacy_commit_ok <- identical(Sys.getenv('T2_ALLOW_LEGACY_CHECKPOINT_COMMIT', '0'), '1') &&
+    is.null(x$checkpoint_schema)
+  schema_ok <- is.null(x$checkpoint_schema) || identical(x$checkpoint_schema, 'optimizer-v1')
   if (!identical(x$engine, engine) ||
       !identical(x$config, cfg) ||
-      !identical(x$commit, Sys.getenv('GITHUB_SHA', 'local'))) {
+      !schema_ok ||
+      !(same_commit || legacy_commit_ok)) {
     stop('Optimizer checkpoint provenance mismatch: ', engine)
   }
   x
@@ -214,7 +219,8 @@ t2_optimizer_save <- function(shard, engine, cfg, generation, state, force=FALSE
   stamp <- paste0(path, '.timestamp')
   age <- if (file.exists(stamp)) as.numeric(difftime(Sys.time(), file.info(stamp)$mtime, units='secs')) else Inf
   if (!force && age < interval) return(invisible(FALSE))
-  entry <- list(engine=engine, config=cfg, generation=as.integer(generation),
+  entry <- list(engine=engine, config=cfg, checkpoint_schema='optimizer-v1',
+                generation=as.integer(generation),
                 commit=Sys.getenv('GITHUB_SHA', 'local'),
                 rng=.Random.seed, state=state)
   t2_atomic_save(entry, path)
