@@ -11,6 +11,12 @@ on:
         description: 'Run containing the canonical Monte Carlo packages and shared validation'
         required: true
         type: string
+      scope:
+        description: 'Repair set to execute'
+        required: false
+        default: failed
+        type: choice
+        options: [failed, incomplete]
 
 permissions:
   contents: read
@@ -18,6 +24,7 @@ permissions:
 
 jobs:
   repair:
+    if: inputs.scope == matrix.scope
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -27,24 +34,106 @@ jobs:
         include:
           - family: normal
             seed: 2
+            scope: failed
           - family: lognormal
             seed: 0
+            scope: failed
           - family: lognormal
             seed: 5
+            scope: failed
           - family: invgauss
             seed: 2
+            scope: failed
           - family: invgauss
             seed: 6
+            scope: failed
           - family: exgaussian
             seed: 4
+            scope: failed
           - family: exwald
             seed: 3
+            scope: failed
           - family: exwald
             seed: 7
+            scope: failed
+          - family: exgaussian
+            seed: 3
+            scope: incomplete
+          - family: exgaussian
+            seed: 5
+            scope: incomplete
+          - family: exgaussian
+            seed: 7
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 0
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 1
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 2
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 3
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 4
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 5
+            scope: incomplete
+          - family: exwald
+            engine: de
+            seed: 7
+            scope: incomplete
+          - family: exwald
+            engine: dirichlet
+            seed: 0
+            scope: incomplete
+          - family: exwald
+            engine: dirichlet
+            seed: 1
+            scope: incomplete
+          - family: exwald
+            engine: dirichlet
+            seed: 2
+            scope: incomplete
+          - family: exwald
+            engine: dirichlet
+            seed: 4
+            scope: incomplete
+          - family: exwald
+            engine: dirichlet
+            seed: 5
+            scope: incomplete
+          - family: exwald
+            engine: dirichlet
+            seed: 6
+            scope: incomplete
+          - family: exwald
+            engine: nsga2
+            seed: 3
+            scope: incomplete
+          - family: exwald
+            engine: nsga2
+            seed: 4
+            scope: incomplete
+          - family: exwald
+            engine: nsga2
+            seed: 7
+            scope: incomplete
     env:
       T2_RESUME: '1'
       T2_FRESH_OPTIMIZER: '1'
-      SHARD: ${{ matrix.family }}_dirichlet_seed${{ matrix.seed }}
+      T2_REPAIR_ENGINE: ${{ matrix.engine || 'dirichlet' }}
+      SHARD: ${{ matrix.family }}_${{ matrix.engine || 'dirichlet' }}_seed${{ matrix.seed }}
       T2_OUTPUT_ROOT: artifacts/ci
       T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
       T2_SHARED_SHARD: shared
@@ -80,15 +169,16 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v5
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-final
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-final
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/
 
       - name: Restore prior Monte Carlo stage
+        continue-on-error: true
         uses: actions/download-artifact@v5
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-montecarlo
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-montecarlo
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/${{ env.SHARD }}/montecarlo/
@@ -97,7 +187,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v5
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-discovery
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-discovery
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/${{ env.SHARD }}/discovery/
@@ -140,66 +230,66 @@ jobs:
           echo $! > checkpoint-sync.pid
 
       - name: Run Monte Carlo stage (reuse)
-        run: Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+        run: Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "$T2_REPAIR_ENGINE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-montecarlo
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-montecarlo
           path: artifacts/ci/${{ env.SHARD }}/montecarlo/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
 
       - name: Run fresh Dirichlet discovery
-        run: Rscript scripts/run_stage.R discovery "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+        run: Rscript scripts/run_stage.R discovery "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "$T2_REPAIR_ENGINE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-discovery
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-discovery
           path: artifacts/ci/${{ env.SHARD }}/discovery/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
 
       - name: Run heldout
-        run: Rscript scripts/run_stage.R heldout "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+        run: Rscript scripts/run_stage.R heldout "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "$T2_REPAIR_ENGINE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-heldout
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-heldout
           path: artifacts/ci/${{ env.SHARD }}/heldout/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
 
       - name: Run real-world
-        run: Rscript scripts/run_stage.R realworld "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+        run: Rscript scripts/run_stage.R realworld "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "$T2_REPAIR_ENGINE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-realworld
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-realworld
           path: artifacts/ci/${{ env.SHARD }}/realworld/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
 
       - name: Run stress
-        run: Rscript scripts/run_stage.R stress "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+        run: Rscript scripts/run_stage.R stress "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "$T2_REPAIR_ENGINE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-stress
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-stress
           path: artifacts/ci/${{ env.SHARD }}/stress/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
 
       - name: Run aggregate
-        run: Rscript scripts/run_stage.R aggregate "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+        run: Rscript scripts/run_stage.R aggregate "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "$T2_REPAIR_ENGINE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-aggregate
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-aggregate
           path: artifacts/ci/${{ env.SHARD }}/aggregate/
           if-no-files-found: warn
           overwrite: true
@@ -221,7 +311,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-final
+          name: full-${{ matrix.family }}-${{ matrix.engine || 'dirichlet' }}-${{ matrix.seed }}-final
           path: artifacts/ci/${{ env.SHARD }}/
           if-no-files-found: warn
           overwrite: true
