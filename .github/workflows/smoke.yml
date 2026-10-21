@@ -1,8 +1,6 @@
 name: Verification
 
 on:
-  push:
-    paths: ['R/**', 'tests/**', 'scripts/**', 'config/**', '.github/workflows/smoke.yml']
   workflow_dispatch:
     inputs:
       mode:
@@ -23,6 +21,7 @@ permissions:
 
 jobs:
   preflight:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'full' || inputs.resume_run_id == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -163,24 +162,9 @@ jobs:
           overwrite: true
           retention-days: 14
 
-  plan:
-    needs: preflight
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - id: matrix
-        run: echo "matrix=$(Rscript scripts/actions_matrix.R github_actions)" >> "$GITHUB_OUTPUT"
-
   shared-validation:
     needs: preflight
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full' && inputs.resume_run_id == ''
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
@@ -235,7 +219,7 @@ jobs:
 
   precomputed-montecarlo:
     needs: preflight
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full' && inputs.resume_run_id == ''
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -321,7 +305,7 @@ jobs:
 
   backup-preflight:
     needs: preflight
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full' && inputs.resume_run_id == ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -345,14 +329,17 @@ jobs:
           echo "BACKUP PREFLIGHT PASS: cloud jobs have a configured local-backup route"
 
   full:
-    needs: [preflight, plan, shared-validation, backup-preflight, precomputed-montecarlo]
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    needs: [preflight, shared-validation, backup-preflight, precomputed-montecarlo]
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'full' && (inputs.resume_run_id != '' || (needs.preflight.result == 'success' && needs.shared-validation.result == 'success' && needs.backup-preflight.result == 'success' && needs.precomputed-montecarlo.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
       max-parallel: 32
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        engine: [ga, nsga2, de, dirichlet]
+        seed: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
@@ -370,15 +357,33 @@ jobs:
       T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
-      - name: Restore precomputed Monte Carlo family package
+      - name: Restore precomputed Monte Carlo family package from current run
+        if: inputs.resume_run_id == ''
         uses: actions/download-artifact@v5
         with:
           name: mc-precomputed-${{ matrix.family }}
           path: artifacts/mc_canonical/
-      - name: Restore shared validations and prepared real-world bundle
+      - name: Restore precomputed Monte Carlo family package from prior run
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-precomputed-${{ matrix.family }}
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/mc_canonical/
+      - name: Restore shared validations and prepared real-world bundle from current run
+        if: inputs.resume_run_id == ''
         uses: actions/download-artifact@v5
         with:
           name: shared-validation
+          path: artifacts/ci/shared/
+      - name: Restore shared validations and prepared real-world bundle from prior run
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: shared-validation
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/shared/
       - name: Connect runner to private backup network
         uses: tailscale/github-action@v4

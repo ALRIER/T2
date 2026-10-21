@@ -14,9 +14,9 @@ d_legacy$budget_registry <- NULL
 b_legacy <- t2_budget_parity_audit(d_legacy)
 stopifnot(nrow(b_legacy) == 4L, all(b_legacy$budget_equal))
 wf <- paste(readLines('.github/workflows/smoke.yml', warn = FALSE), collapse = '\n')
-plan <- read.csv('config/shard_plan.csv', stringsAsFactors = FALSE)
-stopifnot(identical(sort(unique(plan$engine)), c('de', 'dirichlet', 'ga', 'nsga2')),
-          nrow(plan) == 192L,
-          grepl('timeout-minutes: 360', wf), grepl('max-parallel: 32', wf),
-          grepl('fromJSON\\(needs.plan.outputs.matrix\\)', wf))
+stopifnot(grepl('timeout-minutes: 360', wf), grepl('max-parallel: 32', wf),
+          grepl('family: \\[normal, lognormal, weibull, invgauss, exgaussian, exwald\\]', wf),
+          grepl('engine: \\[ga, nsga2, de, dirichlet\\]', wf),
+          grepl('seed: \\[0, 1, 2, 3, 4, 5, 6, 7\\]', wf),
+          !grepl('fromJSON\\(needs.plan.outputs.matrix\\)', wf))
 cat('FOUR DISCOVERY ENGINE CONTRACT PASS\n')
