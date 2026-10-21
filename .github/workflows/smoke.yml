@@ -190,17 +190,40 @@ jobs:
       T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
+      - name: Restore prior shared validation artifact
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: shared-validation
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/shared/
       - uses: r-lib/actions/setup-r@v2
+        if: inputs.resume_run_id == ''
         with:
           r-version: '4.3.3'
           use-public-rspm: true
       - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+        if: inputs.resume_run_id == ''
       - run: Rscript scripts/check_environment.R
+        if: inputs.resume_run_id == ''
+      - name: Validate restored shared validation artifact
+        if: inputs.resume_run_id != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artifacts/ci/shared/datasets/results/datasets.rds
+          test -s artifacts/ci/shared/mc_validation/results/mc_validation.rds
+          test -s artifacts/ci/shared/realworld_bundle.rds
+          echo "RESTORED SHARED VALIDATION PASS"
       - name: Build shared dataset certification
+        if: inputs.resume_run_id == ''
         run: Rscript scripts/run_stage.R datasets shared full normal 0 all
       - name: Build shared Monte Carlo validation certification
+        if: inputs.resume_run_id == ''
         run: Rscript scripts/run_stage.R mc_validation shared full normal 0 all
       - name: Build canonical prepared real-world bundle
+        if: inputs.resume_run_id == ''
         run: Rscript scripts/build_realworld_bundle.R full
       - uses: actions/upload-artifact@v4
         with:
@@ -223,13 +246,25 @@ jobs:
       T2_ZENODO_RECORD_ID: '23543077'
     steps:
       - uses: actions/checkout@v4
+      - name: Restore prior precomputed family artifact
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-precomputed-${{ matrix.family }}
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/mc_canonical/
       - uses: r-lib/actions/setup-r@v2
+        if: inputs.resume_run_id == ''
         with:
           r-version: '4.3.3'
           use-public-rspm: true
       - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+        if: inputs.resume_run_id == ''
       - run: Rscript scripts/check_environment.R
+        if: inputs.resume_run_id == ''
       - name: Download public Monte Carlo package
+        if: inputs.resume_run_id == ''
         shell: bash
         env:
           FAMILY: ${{ matrix.family }}
@@ -244,6 +279,7 @@ jobs:
             "$base/t2_mc_v2_${FAMILY}.tar?download=1" \
             --output "artifacts/mc_canonical/t2_mc_v2_${FAMILY}.tar"
       - name: Verify package checksum and extract
+        if: inputs.resume_run_id == ''
         shell: bash
         env:
           FAMILY: ${{ matrix.family }}
@@ -258,9 +294,23 @@ jobs:
           mv extracted/* .
           rmdir extracted
       - name: Validate complete family package
+        if: inputs.resume_run_id == ''
         env:
           FAMILY: ${{ matrix.family }}
         run: Rscript scripts/verify_precomputed_mc.R artifacts/mc_canonical "$FAMILY"
+      - name: Validate restored family package
+        if: inputs.resume_run_id != ''
+        shell: bash
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          root=artifacts/mc_canonical/v2_shared_base_crn/full/${FAMILY}
+          test "$(find "$root" -type f -name '*.rds' | wc -l)" -eq 12
+          test -s "$root/seed00/n1000_r500.rds"
+          test -s "$root/seed08/n200_r500.rds"
+          test -s "$root/seed08/n1000_r250.rds"
+          echo "RESTORED PRECOMPUTED MC PASS $FAMILY"
       - uses: actions/upload-artifact@v4
         with:
           name: mc-precomputed-${{ matrix.family }}
