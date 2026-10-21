@@ -1,0 +1,228 @@
+name: Dirichlet repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: 'Run containing the failed shard artifacts and completed Monte Carlo'
+        required: true
+        type: string
+      dependency_run_id:
+        description: 'Run containing the canonical Monte Carlo packages and shared validation'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - family: normal
+            seed: 2
+          - family: lognormal
+            seed: 0
+          - family: lognormal
+            seed: 5
+          - family: invgauss
+            seed: 2
+          - family: invgauss
+            seed: 6
+          - family: exgaussian
+            seed: 4
+          - family: exwald
+            seed: 3
+          - family: exwald
+            seed: 7
+    env:
+      T2_RESUME: '1'
+      T2_FRESH_OPTIMIZER: '1'
+      SHARD: ${{ matrix.family }}_dirichlet_seed${{ matrix.seed }}
+      T2_OUTPUT_ROOT: artifacts/ci
+      T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
+      T2_SHARED_SHARD: shared
+      T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
+      T2_REQUIRE_CANONICAL_STRESS: '1'
+      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
+      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
+      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
+      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
+      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
+      T2_CHECKPOINT_TRANSFER_SECONDS: '900'
+      T2_MATRIX_FORMAT: rds
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore canonical Monte Carlo package
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-precomputed-${{ matrix.family }}
+          run-id: ${{ inputs.dependency_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/mc_canonical/
+
+      - name: Restore shared validation bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: shared-validation
+          run-id: ${{ inputs.dependency_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/shared/
+
+      - name: Restore failed shard final snapshot
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-final
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/
+
+      - name: Restore prior Monte Carlo stage
+        uses: actions/download-artifact@v5
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-montecarlo
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/montecarlo/
+
+      - name: Restore prior discovery checkpoint
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-discovery
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/discovery/
+
+      - name: Connect runner to private backup network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Configure verified SSH backup endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$T2_BACKUP_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/check_environment.R
+
+      - name: Restore newest verified local-backup snapshot
+        continue-on-error: true
+        shell: bash
+        run: |
+          T2_OUTPUT_ROOT=artifacts/ci scripts/checkpoint_transfer.sh pull "$SHARD" || \
+            echo "No usable local snapshot; continuing with Actions artifact recovery"
+
+      - name: Start checkpoint backup loop
+        shell: bash
+        run: |
+          nohup scripts/checkpoint_sync_loop.sh "$SHARD" > checkpoint-sync.log 2>&1 &
+          echo $! > checkpoint-sync.pid
+
+      - name: Run Monte Carlo stage (reuse)
+        run: Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-montecarlo
+          path: artifacts/ci/${{ env.SHARD }}/montecarlo/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+      - name: Run fresh Dirichlet discovery
+        run: Rscript scripts/run_stage.R discovery "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-discovery
+          path: artifacts/ci/${{ env.SHARD }}/discovery/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+      - name: Run heldout
+        run: Rscript scripts/run_stage.R heldout "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-heldout
+          path: artifacts/ci/${{ env.SHARD }}/heldout/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+      - name: Run real-world
+        run: Rscript scripts/run_stage.R realworld "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-realworld
+          path: artifacts/ci/${{ env.SHARD }}/realworld/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+      - name: Run stress
+        run: Rscript scripts/run_stage.R stress "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-stress
+          path: artifacts/ci/${{ env.SHARD }}/stress/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+      - name: Run aggregate
+        run: Rscript scripts/run_stage.R aggregate "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" dirichlet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-aggregate
+          path: artifacts/ci/${{ env.SHARD }}/aggregate/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+      - name: Stop checkpoint backup loop and publish final snapshot
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -f checkpoint-sync.pid ]]; then
+            kill "$(cat checkpoint-sync.pid)" 2>/dev/null || true
+            wait "$(cat checkpoint-sync.pid)" 2>/dev/null || true
+          fi
+          scripts/checkpoint_transfer.sh push "$SHARD" || echo "Final backup transfer failed; inspect checkpoint-sync.log"
+          rm -f checkpoint-sync.pid
+
+      - name: Publish final shard artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-${{ matrix.family }}-dirichlet-${{ matrix.seed }}-final
+          path: artifacts/ci/${{ env.SHARD }}/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30

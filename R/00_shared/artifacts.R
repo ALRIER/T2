@@ -195,6 +195,11 @@ t2_optimizer_checkpoint_path <- function(shard, engine) {
 }
 t2_optimizer_restore <- function(shard, engine, cfg) {
   if (is.null(shard) || !nzchar(shard)) return(NULL)
+  # A repair run may deliberately reuse the completed Monte Carlo stage while
+  # rebuilding an optimizer state under the current code/provenance.  This
+  # bypass is explicit and scoped to the optimizer checkpoint only; stage
+  # completion and artifact validation remain unchanged.
+  if (identical(Sys.getenv('T2_FRESH_OPTIMIZER', '0'), '1')) return(NULL)
   path <- t2_optimizer_checkpoint_path(shard, engine)
   if (!file.exists(path) || !identical(Sys.getenv('T2_RESUME', '0'), '1')) return(NULL)
   x <- t2_read_rds(path)
