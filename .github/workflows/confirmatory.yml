@@ -1,0 +1,241 @@
+name: T2 Confirmatory Layer
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: true
+        default: full
+        type: choice
+        options: [smoke, full]
+      resume_run_id:
+        description: 'Optional prior confirmatory run ID for artifact restoration'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  T2_CONFIRMATORY_ROOT: artifacts/confirmatory
+  T2_MATRIX_FORMAT: rds
+  T2_MAX_FILE_MB: '25'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/run_confirmatory.R preflight ${{ inputs.mode }}
+      - run: Rscript tests/test_confirmatory_contract.R
+
+  confirmatory-smoke:
+    needs: preflight
+    if: inputs.mode == 'smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Restore prior smoke artifact
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-smoke
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/confirmatory/
+      - run: Rscript scripts/run_confirmatory.R montecarlo smoke exgaussian 9
+      - run: Rscript scripts/run_confirmatory.R score smoke exgaussian 9
+      - run: Rscript scripts/run_confirmatory.R inference smoke exgaussian
+      - run: Rscript scripts/run_confirmatory.R realworld_score smoke
+      - run: Rscript scripts/run_confirmatory.R realworld_inference smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-smoke
+          path: artifacts/confirmatory/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+  confirmatory-shards:
+    needs: preflight
+    if: inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 48
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        confirm_seed: [9, 10, 11, 12, 13, 14, 15, 16]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Restore prior shard artifact
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-${{ matrix.family }}-seed${{ matrix.confirm_seed }}
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/confirmatory/
+      - run: Rscript scripts/run_confirmatory.R montecarlo full ${{ matrix.family }} ${{ matrix.confirm_seed }}
+      - run: Rscript scripts/run_confirmatory.R score full ${{ matrix.family }} ${{ matrix.confirm_seed }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-${{ matrix.family }}-seed${{ matrix.confirm_seed }}
+          path: artifacts/confirmatory/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  confirmatory-inference:
+    needs: confirmatory-shards
+    if: inputs.mode == 'full' && needs.confirmatory-shards.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Restore all confirmatory score artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: confirmatory-*-seed*
+          path: artifacts/confirmatory/
+          merge-multiple: true
+      - run: Rscript scripts/run_confirmatory.R inference full ${{ matrix.family }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-inference-${{ matrix.family }}
+          path: artifacts/confirmatory/inference/${{ matrix.family }}/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  realworld:
+    needs: preflight
+    if: inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/run_confirmatory.R realworld_score full
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-realworld-score
+          path: artifacts/confirmatory/realworld/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  realworld-inference:
+    needs: realworld
+    if: inputs.mode == 'full' && needs.realworld.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-realworld-score
+          path: artifacts/confirmatory/realworld/
+      - run: Rscript scripts/run_confirmatory.R realworld_inference full
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-realworld-inference
+          path: artifacts/confirmatory/realworld/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  confirmatory-report:
+    needs: [confirmatory-inference, realworld-inference]
+    if: inputs.mode == 'full' && needs.confirmatory-inference.result == 'success' && needs.realworld-inference.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-inference-normal
+          path: artifacts/confirmatory/inference/normal/
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-inference-lognormal
+          path: artifacts/confirmatory/inference/lognormal/
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-inference-weibull
+          path: artifacts/confirmatory/inference/weibull/
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-inference-invgauss
+          path: artifacts/confirmatory/inference/invgauss/
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-inference-exgaussian
+          path: artifacts/confirmatory/inference/exgaussian/
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-inference-exwald
+          path: artifacts/confirmatory/inference/exwald/
+      - uses: actions/download-artifact@v5
+        with:
+          name: confirmatory-realworld-inference
+          path: artifacts/confirmatory/realworld/
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/run_confirmatory.R report full
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-final-report
+          path: artifacts/confirmatory/report/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90

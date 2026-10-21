@@ -1,0 +1,19 @@
+key,value,description
+protocol_id,T2_CONFIRMATORY_V1,Immutable protocol identifier
+mode,primary,Primary independent confirmation panel
+training_seed_indices,0:7,Frozen discovery seeds; never reselected during confirmation
+confirmatory_seed_indices,9:16,Fresh Monte Carlo seeds not used by discovery or current held-out analysis
+sample_sizes,200|1000|3000,Prespecified sample-size grid
+replications,500,Monte Carlo replicates per condition
+bootstrap_B,2000,Paired block-bootstrap repetitions for primary inference
+fdr_alpha,0.05,BH-FDR threshold
+primary_reference,mean,Fixed benchmark for the primary confirmatory claim
+primary_metrics,mse|q95,Both metrics must pass jointly
+grid,full_v2_contamination_grid,Same declared grid with fresh independent random streams
+realworld_manifest,config/confirmatory_public_datasets.csv,New parent datasets only; never reuse the exploratory battery
+raw_error_unit,replicate_paired_squared_error,Required persisted inferential unit
+primary_unit,family_engine,One primary hypothesis per family and learned engine
+realworld_parent_datasets,20,Independent parent objects from the version-pinned R datasets package
+realworld_model_scope,all_families_and_engines,Every parent dataset is scored against all six families and four engines
+realworld_primary_unit,parent_dataset,Parent datasets are the independent external inferential blocks
+universal_rule,all_primary_conditions_and_both_metrics,Universal label requires every predeclared primary condition
