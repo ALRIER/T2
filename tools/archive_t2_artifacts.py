@@ -81,6 +81,11 @@ def main():
     mc = {a["name"] for a in artifacts if a["name"].startswith("mc-") and not a.get("expired")}
     if args.require_complete_mc and len(mc) != 54:
         raise SystemExit(f"Canonical Monte Carlo has {len(mc)} of 54 artifacts; no complete archive yet.")
+    previous = {}
+    manifest_path = args.output / "manifest.json"
+    if manifest_path.exists():
+        old = json.loads(manifest_path.read_text(encoding="utf-8"))
+        previous = {row["name"]: row for row in old.get("artifacts", [])}
     records = []
     for a in artifacts:
         name = a["name"]
@@ -91,7 +96,14 @@ def main():
             raise ValueError("Unsafe artifact name: " + name)
         dest = args.output / (name + ".zip")
         expected = a.get("digest") or ""
-        if dest.exists():
+        cached = previous.get(name, {})
+        cache_is_current = (dest.exists() and cached.get("artifact_id") == a["id"] and
+                            cached.get("bytes") == dest.stat().st_size and
+                            cached.get("github_digest", "") == expected)
+        if cache_is_current:
+            digest = cached["sha256"]
+            print("CACHED VERIFIED", name, flush=True)
+        elif dest.exists():
             digest = sha256(dest)
             if expected and expected != "sha256:" + digest:
                 raise RuntimeError("Existing local archive differs from GitHub: " + name)
@@ -116,7 +128,7 @@ def main():
                 if os.path.exists(tmp):
                     os.unlink(tmp)
         records.append({
-            "name": name, "artifact_id": a["id"], "sha256": sha256(dest),
+            "name": name, "artifact_id": a["id"], "sha256": digest,
             "bytes": dest.stat().st_size, "created_at": a.get("created_at"),
             "expires_at": a.get("expires_at"), "github_digest": expected,
         })
