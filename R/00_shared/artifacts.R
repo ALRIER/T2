@@ -36,7 +36,8 @@ t2_atomic_save <- function(x, path) {
     if (!file.rename(part_tmp, part)) stop('Failed atomic artifact part write')
     parts <- c(parts, part)
   }
-  index <- list(t2_chunked_rds=TRUE, parts=parts, bytes=length(raw),
+  # Keep part names relative so a checkpoint can move between runners.
+  index <- list(t2_chunked_rds=TRUE, parts=basename(parts), bytes=length(raw),
                 sha256=vapply(parts, t2_sha256, character(1)))
   saveRDS(index, path)
   invisible(path)
@@ -45,10 +46,14 @@ t2_atomic_save <- function(x, path) {
 t2_read_rds <- function(path) {
   x <- readRDS(path)
   if (!is.list(x) || !isTRUE(x$t2_chunked_rds)) return(x)
-  if (!length(x$parts) || !all(file.exists(x$parts))) stop('Chunked RDS is incomplete')
-  if (!identical(unname(vapply(x$parts, t2_sha256, character(1))), unname(x$sha256)))
+  if (!length(x$parts)) stop('Chunked RDS is incomplete')
+  part_paths <- vapply(x$parts, function(p) {
+    if (grepl('^/', p)) p else file.path(paste0(path, '.parts'), basename(p))
+  }, character(1))
+  if (!all(file.exists(part_paths))) stop('Chunked RDS is incomplete')
+  if (!identical(unname(vapply(part_paths, t2_sha256, character(1))), unname(x$sha256)))
     stop('Chunked RDS checksum mismatch')
-  raw <- do.call(c, lapply(x$parts, function(p) readBin(p, 'raw', n=file.info(p)$size)))
+  raw <- do.call(c, lapply(part_paths, function(p) readBin(p, 'raw', n=file.info(p)$size)))
   con <- rawConnection(raw, 'rb'); on.exit(close(con), add=TRUE)
   readRDS(con)
 }

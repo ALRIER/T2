@@ -27,7 +27,8 @@ t2_heldout_independence_audit <- function(discovery, mode, shard, family, n_valu
     stop('Held-out seeds overlap or are duplicated')
   data.frame(
     audit='heldout_independence_and_budget_parity', mode=mode, family=family,
-    training_partition='8_canonical_training_seeds', heldout_partition='reserved_seed_08',
+    training_partition='discovery_training_only', heldout_partition='fresh_rng',
+    training_seed_role='canonical_seeds_00_to_07', heldout_seed_role='reserved_seed_08',
     training_seed=training_seed, heldout_seed=paste(heldout_seed, collapse=';'),
     heldout_sample_sizes=paste(n_values, collapse=';'),
     engines=length(unique(budget$engine)), budget_equal=all(budget$budget_equal),

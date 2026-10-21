@@ -177,8 +177,40 @@ jobs:
       - id: matrix
         run: echo "matrix=$(Rscript scripts/actions_matrix.R github_actions)" >> "$GITHUB_OUTPUT"
 
-  canonical-montecarlo:
+  shared-validation:
     needs: preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      T2_OUTPUT_ROOT: artifacts/ci
+      T2_REALWORLD_REPS: '500'
+      T2_REALWORLD_SAMPLE_SIZES: '200,1000,3000'
+      T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
+      T2_MATRIX_FORMAT: rds
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/check_environment.R
+      - name: Build shared dataset certification
+        run: Rscript scripts/run_stage.R datasets shared full normal 0 all
+      - name: Build shared Monte Carlo validation certification
+        run: Rscript scripts/run_stage.R mc_validation shared full normal 0 all
+      - name: Build canonical prepared real-world bundle
+        run: Rscript scripts/build_realworld_bundle.R full
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shared-validation
+          path: artifacts/ci/shared/
+          if-no-files-found: error
+          retention-days: 30
+
+  canonical-montecarlo:
+    needs: [preflight, backup-preflight]
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -188,6 +220,14 @@ jobs:
       matrix:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
         seed: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
+      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
+      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
+      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
+      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
+      T2_CHECKPOINT_TRANSFER_SECONDS: '900'
+      T2_BACKUP_LOCAL_DIR: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
@@ -196,11 +236,33 @@ jobs:
           use-public-rspm: true
       - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - run: Rscript scripts/check_environment.R
+      - name: Connect runner to private backup network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Configure verified SSH backup endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$T2_BACKUP_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
+      - name: Start canonical checkpoint backup loop
+        shell: bash
+        run: |
+          nohup scripts/checkpoint_sync_loop.sh "canonical-${{ matrix.family }}-${{ matrix.seed }}" > canonical-sync.log 2>&1 &
+          echo $! > canonical-sync.pid
       - name: Generate canonical Monte Carlo block
         env:
           T2_OUTPUT_ROOT: artifacts/ci
           T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
           T2_MC_WORKERS: '2'
+          T2_STRESS_SAMPLE_N: '1000'
+          T2_STRESS_REPS: '250'
         run: Rscript scripts/generate_canonical_mc.R full "${{ matrix.family }}" "${{ matrix.seed }}"
       - uses: actions/upload-artifact@v4
         with:
@@ -208,6 +270,17 @@ jobs:
           path: artifacts/mc_canonical/
           if-no-files-found: error
           retention-days: 30
+      - name: Stop canonical backup loop and publish final snapshot
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -f canonical-sync.pid ]]; then
+            kill "$(cat canonical-sync.pid)" 2>/dev/null || true
+            wait "$(cat canonical-sync.pid)" 2>/dev/null || true
+          fi
+          scripts/checkpoint_transfer.sh push "canonical-${{ matrix.family }}-${{ matrix.seed }}" || true
+          rm -f canonical-sync.pid
 
   backup-preflight:
     needs: preflight
@@ -235,7 +308,7 @@ jobs:
           echo "BACKUP PREFLIGHT PASS: cloud jobs have a configured local-backup route"
 
   full:
-    needs: [preflight, plan, backup-preflight, canonical-montecarlo]
+    needs: [preflight, plan, shared-validation, backup-preflight, canonical-montecarlo]
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -247,6 +320,9 @@ jobs:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
       T2_OUTPUT_ROOT: artifacts/ci
+      T2_SHARED_SHARD: shared
+      T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
+      T2_REQUIRE_CANONICAL_STRESS: '1'
       T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
       T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
       T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
@@ -266,6 +342,11 @@ jobs:
         with:
           name: mc-${{ matrix.family }}-seed-8
           path: artifacts/mc_canonical/
+      - name: Restore shared validations and prepared real-world bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: shared-validation
+          path: artifacts/ci/shared/
       - name: Connect runner to private backup network
         uses: tailscale/github-action@v4
         with:
@@ -287,14 +368,69 @@ jobs:
           use-public-rspm: true
       - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - run: Rscript scripts/check_environment.R
-      - name: Restore prior shard artifacts
+      - name: Restore prior final shard artifact
         if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
         uses: actions/download-artifact@v5
         with:
-          name: full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-final"
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/
+      - name: Restore prior Monte Carlo stage artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-montecarlo"
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/montecarlo/
+      - name: Restore prior discovery stage artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-discovery"
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/discovery/
+      - name: Restore prior held-out stage artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-heldout"
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/heldout/
+      - name: Restore prior real-world stage artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-realworld"
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/realworld/
+      - name: Restore prior stress stage artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-stress"
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/stress/
+      - name: Restore prior aggregate stage artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-aggregate"
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/ci/${{ env.SHARD }}/aggregate/
       - name: Restore newest verified local-backup snapshot
         if: env.T2_RESUME == '1'
         continue-on-error: true
@@ -307,33 +443,13 @@ jobs:
         run: |
           nohup scripts/checkpoint_sync_loop.sh "$SHARD" > checkpoint-sync.log 2>&1 &
           echo $! > checkpoint-sync.pid
-      - name: Run datasets
-        run: Rscript scripts/run_stage.R datasets "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
-          if-no-files-found: warn
-          overwrite: true
-          retention-days: 30
-      - name: Run mc_validation
-        run: Rscript scripts/run_stage.R mc_validation "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
-          if-no-files-found: warn
-          overwrite: true
-          retention-days: 30
       - name: Run montecarlo
         run: Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-montecarlo"
+          path: artifacts/ci/${{ env.SHARD }}/montecarlo/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
@@ -342,8 +458,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-discovery"
+          path: artifacts/ci/${{ env.SHARD }}/discovery/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
@@ -352,8 +468,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-heldout"
+          path: artifacts/ci/${{ env.SHARD }}/heldout/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
@@ -362,8 +478,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-realworld"
+          path: artifacts/ci/${{ env.SHARD }}/realworld/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
@@ -372,8 +488,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}"
-          path: artifacts/ci/
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-stress"
+          path: artifacts/ci/${{ env.SHARD }}/stress/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
@@ -382,8 +498,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}
-          path: artifacts/ci/
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-aggregate"
+          path: artifacts/ci/${{ env.SHARD }}/aggregate/
           if-no-files-found: warn
           overwrite: true
           retention-days: 30
@@ -398,3 +514,12 @@ jobs:
           fi
           scripts/checkpoint_transfer.sh push "$SHARD" || echo "Final backup transfer failed; inspect checkpoint-sync.log"
           rm -f checkpoint-sync.pid
+      - name: Publish final shard artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "full-${{ matrix.family }}-${{ matrix.engine }}-${{ matrix.seed }}-final"
+          path: artifacts/ci/${{ env.SHARD }}/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30

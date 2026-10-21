@@ -10,8 +10,9 @@ precompute_benchmarks <- function(T,mu,eligible=rep(TRUE,26L)) {
   E <- (T[,eligible,drop=FALSE]-mu)^2
   list(mse=min(colMeans(E)), q95=min(apply(E,2,quantile,probs=.95,type=8,names=FALSE)))
 }
-evaluate_weights <- function(T,W,mu,eligible=rep(TRUE,26L),batch_size=32L,benchmark=NULL) {
-  W <- normalize_weights(W,eligible)
+evaluate_weights <- function(T,W,mu,eligible=rep(TRUE,26L),batch_size=32L,benchmark=NULL,
+                             weights_normalized=FALSE) {
+  if (!isTRUE(weights_normalized)) W <- normalize_weights(W,eligible)
   stopifnot(ncol(T)==26L,all(is.finite(T)),length(mu)==1L)
   if(is.null(benchmark)) benchmark<-precompute_benchmarks(T,mu,eligible)
   ans <- matrix(NA_real_,ncol(W),2,dimnames=list(NULL,c('mse','q95')))

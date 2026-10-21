@@ -16,7 +16,10 @@ command -v rsync >/dev/null && command -v ssh >/dev/null && command -v sha256sum
 root="${T2_OUTPUT_ROOT:-artifacts/ci}"
 commit="${GITHUB_SHA:-local}"
 [[ "$commit" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || exit 2
-local_dir="$root/$shard"
+local_dir="${T2_BACKUP_LOCAL_DIR:-$root/$shard}"
+[[ "$local_dir" != *..* && "$local_dir" != /* ]] || {
+  echo "T2_BACKUP_LOCAL_DIR must be a relative path without '..'" >&2; exit 2;
+}
 remote="${T2_BACKUP_USER}@${T2_BACKUP_HOST}"
 remote_dir="${T2_BACKUP_ROOT%/}/$commit/$shard"
 export RSYNC_RSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15"

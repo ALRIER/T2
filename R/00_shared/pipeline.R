@@ -21,6 +21,20 @@ t2_mc_workers <- function() {
   if(.Platform$OS.type!='unix')1L else x
 }
 t2_mc_root <- function() Sys.getenv('T2_CANONICAL_MC_ROOT', unset='artifacts/mc_canonical')
+t2_shared_shard <- function() {
+  x <- Sys.getenv('T2_SHARED_SHARD', unset='')
+  if (!nzchar(x)) NULL else x
+}
+t2_dependency_path <- function(shard, stage) {
+  local <- t2_path(shard, stage)
+  if (file.exists(local)) return(local)
+  shared <- t2_shared_shard()
+  if (!is.null(shared)) {
+    candidate <- t2_path(shared, stage)
+    if (file.exists(candidate)) return(candidate)
+  }
+  local
+}
 t2_mc_path <- function(mode, family, seed_index, n, replications) {
   file.path(t2_mc_root(), t2_mc_version(), mode, family, sprintf('seed%02d', as.integer(seed_index)),
             sprintf('n%s_r%s.rds', as.integer(n), as.integer(replications)))
@@ -148,7 +162,7 @@ t2_models <- function(d) {
  mods
 }
 t2_require <- function(shard,stage) {
- path<-t2_path(shard,stage)
+ path<-t2_dependency_path(shard,stage)
  if(!file.exists(path))stop(paste('Required stage missing:',stage,'for',shard))
  t2_read_rds(path)
 }
@@ -245,7 +259,7 @@ t2_run_discovery <- function(data,mode,shard,engine='all'){
  if (!all(selected %in% names(dispatch))) stop('Unknown discovery engine')
  engines <- setNames(lapply(selected, function(name) dispatch[[name]]()), selected)
  list(engines=engines,models=t2_models(engines),config=cfg,seed=t2_seed(shard,200),
-      training_seed_index=as.integer(data$seed_index),
+      training_seed_index=if (length(data$seed_index)) as.integer(data$seed_index) else 0L,
       mc_canonical_id=if(is.null(data$canonical_id)) NA_character_ else data$canonical_id)
 }
 t2_run_heldout <- function(discovery,mode,shard,family='normal') {
@@ -269,6 +283,12 @@ t2_run_stress <- function(discovery,mode,shard,family='normal') {
  stress_R <- as.integer(Sys.getenv('T2_STRESS_REPS', unset=if(mode=='full') '250' else '30'))
  if (!is.finite(stress_n) || stress_n < 20L || !is.finite(stress_R) || stress_R < 5L)
    stop('Invalid stress runtime configuration')
+ stress_path <- t2_mc_path(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
+ if (mode == 'full' && identical(Sys.getenv('T2_REQUIRE_CANONICAL_STRESS', '0'), '1') &&
+     !file.exists(stress_path)) {
+   stop('Canonical stress block is missing: ', stress_path,
+        '; refusing to regenerate it inside every model shard')
+ }
  x<-t2_canonical_mc(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
  result<-do.call(rbind,lapply(x$scenarios,function(s){z<-score_model_set(s$T,discovery$models,s$target);z$scenario_id<-s$scenario_id;z}))
  list(scores=result,stage='stress',fixture=identical(mode, 'smoke'),stress_config=list(sample_n=stress_n,

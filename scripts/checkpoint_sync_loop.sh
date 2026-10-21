@@ -10,7 +10,7 @@ transfer="${T2_TRANSFER_SCRIPT:-scripts/checkpoint_transfer.sh}"
 [[ -x "$transfer" ]] || { echo "Transfer script is not executable: $transfer" >&2; exit 2; }
 
 push_once() {
-  if [[ -d "${T2_OUTPUT_ROOT:-artifacts/ci}/$shard" ]]; then
+  if [[ -d "${T2_BACKUP_LOCAL_DIR:-${T2_OUTPUT_ROOT:-artifacts/ci}/$shard}" ]]; then
     if ! "$transfer" push "$shard"; then
       echo "CHECKPOINT TRANSFER RETRYABLE FAILURE $shard" >&2
     fi

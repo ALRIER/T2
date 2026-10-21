@@ -49,15 +49,24 @@ nsga_offspring <- function(W,n,eligible,mutation_rate=.15,crossover_probability=
 # The same prepared Monte Carlo matrices are reused for every generation.
 nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
  if(!length(training_scenarios)) stop('No training scenarios')
- bands<-c('clean','low','intermediate','high'); accum<-matrix(0,ncol(W),2L);used<-0L
+ bands<-c('clean','low','intermediate','high'); accum<-matrix(0,ncol(W),2L)
  for(band in bands) {
-   sc<-Filter(function(z) identical(as.character(z$band),band),training_scenarios)
+   sc<-training_scenarios[vapply(training_scenarios,function(z)
+     identical(as.character(z$band),band),logical(1))]
    if(!length(sc)) stop(paste('Missing training band:',band))
+   eligible_keys <- vapply(sc, function(z) paste(as.integer(z$eligible), collapse=''), character(1))
+   groups <- split(seq_along(sc), eligible_keys)
+   band_values <- lapply(groups, function(ix) {
+     eligible <- sc[[ix[1L]]]$eligible
+     normalized <- normalize_weights(W, eligible)
+     Reduce('+', lapply(ix, function(k) evaluate_weights(sc[[k]]$T, normalized,
+       sc[[k]]$target, eligible=eligible, batch_size=batch_size,
+       benchmark=sc[[k]]$benchmark, weights_normalized=TRUE)$objectives))/length(ix)
+   })
    # Equal within-band scenario weights, equal total weight across four bands.
    # explicit average avoids depending on replicate/sample counts
-   band_result<-Reduce('+',lapply(sc,function(s) evaluate_weights(s$T,W,s$target,eligible=s$eligible,
-                    batch_size=batch_size,benchmark=s$benchmark)$objectives))/length(sc)
-   accum<-accum+band_result/length(bands);used<-used+length(sc)
+   band_result<-Reduce('+',Map(function(v,ix) v*(length(ix)/length(sc)), band_values, groups))
+   accum<-accum+band_result/length(bands)
  }
  colnames(accum)<-c('mse','q95');accum
 }
@@ -75,8 +84,8 @@ nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=re
  }
  if(start_g<=cfg$generations) for(g in seq.int(start_g,cfg$generations)) {
   last_generation<-g
-   ranks<-nsga_fast_sort(O)$ranks; crowd<-numeric(ncol(W))
-   for(ix in nsga_fast_sort(O)$fronts) crowd[ix]<-nsga_crowding(O[ix,,drop=FALSE])
+   sort_info<-nsga_fast_sort(O); ranks<-sort_info$ranks; crowd<-numeric(ncol(W))
+   for(ix in sort_info$fronts) crowd[ix]<-nsga_crowding(O[ix,,drop=FALSE])
    # binary tournaments using Pareto ranks + crowding distance
    winner<-function() {ix<-sample.int(ncol(W),2L); if(ranks[ix[1]]<ranks[ix[2]]) return(ix[1]);if(ranks[ix[2]]<ranks[ix[1]])return(ix[2]);if(crowd[ix[1]]>=crowd[ix[2]])ix[1] else ix[2]}
    parents<-W[,replicate(n,winner()),drop=FALSE]

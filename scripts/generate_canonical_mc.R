@@ -16,6 +16,9 @@ if (mode == 'smoke') {
 } else if (seed_index == t2_heldout_seed_index()) {
   for (n in ga_config$heldout_n)
     t2_canonical_mc(mode, family, seed_index, n, ga_config$evaluation_replicates)
+  stress_n <- as.integer(Sys.getenv('T2_STRESS_SAMPLE_N', '1000'))
+  stress_r <- as.integer(Sys.getenv('T2_STRESS_REPS', '250'))
+  t2_canonical_mc(mode, family, seed_index, stress_n, stress_r)
 } else {
   t2_canonical_mc(mode, family, seed_index, ga_config$train_n, ga_config$evaluation_replicates)
 }

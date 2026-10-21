@@ -52,8 +52,6 @@ t2_realworld_load_vector <- function(row) {
 
 t2_run_realworld_public <- function(discovery, mode = 'smoke', shard = 'realworld') {
   tab <- t2_realworld_validate_manifest(t2_realworld_manifest(), mode)
-  datasets <- lapply(seq_len(nrow(tab)), function(i) t2_realworld_load_vector(tab[i, , drop = FALSE]))
-  names(datasets) <- vapply(datasets, `[[`, character(1), 'dataset_id')
   sample_sizes <- if (mode == 'smoke') c(200L, 1000L, 3000L) else {
     raw <- Sys.getenv('T2_REALWORLD_SAMPLE_SIZES', unset = '200,1000,3000')
     as.integer(strsplit(raw, ',', fixed = TRUE)[[1]])
@@ -61,24 +59,41 @@ t2_run_realworld_public <- function(discovery, mode = 'smoke', shard = 'realworl
   sample_sizes <- sample_sizes[is.finite(sample_sizes) & sample_sizes > 1L]
   if (!length(sample_sizes)) stop('No valid real-world sample sizes configured')
   reps <- as.integer(Sys.getenv('T2_REALWORLD_REPS', unset = if (mode == 'smoke') '30' else '500'))
-  prepared <- lapply(seq_along(datasets), function(i) {
-    realworld_prepare(datasets[[i]]$x, sample_sizes = sample_sizes, R = reps,
-                      seed = t2_seed(shard, 502L + i))
-  })
+  bundle_path <- Sys.getenv('T2_REALWORLD_BUNDLE', unset = '')
+  bundle <- NULL
+  if (nzchar(bundle_path) && file.exists(bundle_path)) {
+    bundle <- t2_read_rds(bundle_path)
+    if (!identical(bundle$mode, mode) || !identical(as.integer(bundle$reps), reps) ||
+        !identical(as.integer(bundle$sample_sizes), as.integer(sample_sizes)) ||
+        !identical(bundle$manifest_sha256, as.character(tab$sha256)))
+      stop('Real-world prepared bundle provenance/configuration mismatch')
+    prepared <- bundle$prepared
+    dataset_ids <- names(prepared)
+  } else {
+    datasets <- lapply(seq_len(nrow(tab)), function(i) t2_realworld_load_vector(tab[i, , drop = FALSE]))
+    names(datasets) <- vapply(datasets, `[[`, character(1), 'dataset_id')
+    dataset_ids <- names(datasets)
+    prepared <- lapply(seq_along(datasets), function(i) {
+      realworld_prepare(datasets[[i]]$x, sample_sizes = sample_sizes, R = reps,
+                        seed = t2_seed('realworld_canonical_bundle', 502L + i))
+    })
+    names(prepared) <- dataset_ids
+  }
   scores <- do.call(rbind, lapply(seq_along(prepared), function(i) {
     realworld_compare_models(prepared[[i]], discovery$models,
-                             dataset_id = datasets[[i]]$dataset_id)
+                             dataset_id = dataset_ids[i])
   }))
   # Keep the bootstrap/inference audit as a separate table. The compact score
   # table retains the same mse/q95 contract used by heldout and aggregate.
   audit <- realworld_integrated_audit(
-    datasets = lapply(datasets, `[[`, 'x'), models = discovery$models,
-    sample_sizes = sample_sizes, R = reps, seed = t2_seed(shard, 702L), control = 'mean')
+    datasets = setNames(lapply(dataset_ids, function(x) x), dataset_ids), models = discovery$models,
+    sample_sizes = sample_sizes, R = reps, seed = t2_seed('realworld_canonical_audit', 702L),
+    control = 'mean', prepared = prepared)
   list(status = 'PASS', fixture = any(grepl('fixture', tab$license, ignore.case = TRUE)),
        manifest = tab, scores = scores, condition_rows = audit$condition_rows,
        dataset_level = audit$dataset_level,
        results = list(realworld_inference = audit$condition_rows),
        stage = 'realworld_external_battery', reps = reps,
        sample_sizes = sample_sizes, empirical_target = 'full_dataset_mean_proxy',
-       final_battery = TRUE)
+       final_battery = TRUE, prepared_bundle = if (is.null(bundle)) 'local_canonical' else bundle$bundle_id)
 }
