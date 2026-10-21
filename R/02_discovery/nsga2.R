@@ -55,7 +55,8 @@ nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
    if(!length(sc)) stop(paste('Missing training band:',band))
    # Equal within-band scenario weights, equal total weight across four bands.
    # explicit average avoids depending on replicate/sample counts
-   band_result<-Reduce('+',lapply(sc,function(s) evaluate_weights(s$T,W,s$target,eligible=s$eligible,batch_size=batch_size)$objectives))/length(sc)
+   band_result<-Reduce('+',lapply(sc,function(s) evaluate_weights(s$T,W,s$target,eligible=s$eligible,
+                    batch_size=batch_size,benchmark=s$benchmark)$objectives))/length(sc)
    accum<-accum+band_result/length(bands);used<-used+length(sc)
  }
  colnames(accum)<-c('mse','q95');accum

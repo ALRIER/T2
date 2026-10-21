@@ -19,14 +19,15 @@ t2_budget_parity_audit <- function(discovery) {
 
 t2_heldout_independence_audit <- function(discovery, mode, shard, family, n_values) {
   budget <- t2_budget_parity_audit(discovery)
-  training_seed <- t2_seed(shard, 100L)
-  heldout_seed <- vapply(n_values, function(n)
-    t2_seed(paste0(shard, '_heldout_', n), 100L), integer(1))
-  if (any(heldout_seed == training_seed) || anyDuplicated(heldout_seed))
+  training_seed <- t2_mc_seed(family, discovery$training_seed_index)
+  heldout_seed <- rep(t2_mc_seed(family, t2_heldout_seed_index()), length(n_values))
+  if (is.na(discovery$training_seed_index) ||
+      discovery$training_seed_index == t2_heldout_seed_index() ||
+      any(heldout_seed == training_seed))
     stop('Held-out seeds overlap or are duplicated')
   data.frame(
     audit='heldout_independence_and_budget_parity', mode=mode, family=family,
-    training_partition='discovery_training_only', heldout_partition='fresh_rng',
+    training_partition='8_canonical_training_seeds', heldout_partition='reserved_seed_08',
     training_seed=training_seed, heldout_seed=paste(heldout_seed, collapse=';'),
     heldout_sample_sizes=paste(n_values, collapse=';'),
     engines=length(unique(budget$engine)), budget_equal=all(budget$budget_equal),

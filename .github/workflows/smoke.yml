@@ -44,6 +44,7 @@ jobs:
       - run: Rscript tests/test_engine_contract.R
       - run: Rscript tests/test_realworld_contract.R
       - run: Rscript tests/test_resume_contract.R
+      - run: Rscript tests/test_canonical_mc_contract.R
 
   smoke:
     needs: preflight
@@ -175,6 +176,37 @@ jobs:
       - id: matrix
         run: echo "matrix=$(Rscript scripts/actions_matrix.R github_actions)" >> "$GITHUB_OUTPUT"
 
+  canonical-montecarlo:
+    needs: preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 32
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        seed: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/check_environment.R
+      - name: Generate canonical Monte Carlo block
+        env:
+          T2_OUTPUT_ROOT: artifacts/ci
+          T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
+        run: Rscript scripts/generate_canonical_mc.R full "${{ matrix.family }}" "${{ matrix.seed }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mc-${{ matrix.family }}-seed-${{ matrix.seed }}
+          path: artifacts/mc_canonical/
+          if-no-files-found: error
+          retention-days: 30
+
   backup-preflight:
     needs: preflight
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
@@ -201,7 +233,7 @@ jobs:
           echo "BACKUP PREFLIGHT PASS: cloud jobs have a configured local-backup route"
 
   full:
-    needs: [preflight, plan, backup-preflight]
+    needs: [preflight, plan, backup-preflight, canonical-montecarlo]
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -221,6 +253,16 @@ jobs:
       T2_CHECKPOINT_TRANSFER_SECONDS: '900'
     steps:
       - uses: actions/checkout@v4
+      - name: Restore canonical Monte Carlo blocks
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-${{ matrix.family }}-seed-${{ matrix.seed }}
+          path: artifacts/mc_canonical/
+      - name: Restore reserved held-out Monte Carlo block
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-${{ matrix.family }}-seed-8
+          path: artifacts/mc_canonical/
       - name: Connect runner to private backup network
         uses: tailscale/github-action@v4
         with:

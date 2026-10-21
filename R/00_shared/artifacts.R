@@ -31,7 +31,9 @@ t2_atomic_save <- function(x, path) {
   for (start in seq.int(1L, length(raw), by=part_size)) {
     end <- min(length(raw), start + part_size - 1L)
     part <- sprintf('%s.part-%04d', path, length(parts) + 1L)
-    writeBin(raw[start:end], part)
+    part_tmp <- paste0(part, '.', Sys.getpid(), '.tmp')
+    writeBin(raw[start:end], part_tmp)
+    if (!file.rename(part_tmp, part)) stop('Failed atomic artifact part write')
     parts <- c(parts, part)
   }
   index <- list(t2_chunked_rds=TRUE, parts=parts, bytes=length(raw),

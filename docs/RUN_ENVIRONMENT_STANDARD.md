@@ -17,6 +17,12 @@ The `Verification` workflow in `.github/workflows/smoke.yml` performs preflight 
 The committed `config/shard_plan.csv` contains 192 distinct shards:
 6 families × 4 engines (GA, NSGA-II, DE and Dirichlet) × 8 seeds.
 
+Before those shards start, the workflow produces 54 canonical Monte Carlo blocks:
+6 families × 9 seeds. Seeds 0–7 feed discovery; seed 8 is reserved for held-out
+and stress evaluation. Each training shard downloads only its own family/seed block
+plus that family's reserved held-out block, rather than copying the entire 54-block
+archive to every runner.
+
 Every row must have `worker_id=github_actions`. The `scripts/actions_matrix.R` command checks the entire 192-shard Cartesian product, rejects missing/duplicate/external assignments, and emits the GitHub Actions matrix. The `scripts/generate_shard_plan.R` command deterministically regenerates the Actions-only plan.
 
 The workflow uses `max-parallel: 32` and runs each shard in an isolated GitHub-hosted job. GitHub's actual concurrent job availability may be lower. Each job has a 360-minute timeout; long-running shards still need production timing validation.

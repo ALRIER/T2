@@ -3,27 +3,116 @@ t2_seed <- function(shard,offset=0L) {
  a<-utf8ToInt(shard); as.integer((sum(a*seq_along(a))+offset)%%2000000000L+1L)
 }
 t2_families <- function()c('normal','lognormal','weibull','invgauss','exgaussian','exwald')
+t2_training_seed_indices <- function() as.integer(ga_config$training_seed_indices)
+t2_heldout_seed_index <- function() as.integer(ga_config$heldout_seed_index)
+t2_mc_seed <- function(family, seed_index) {
+  t2_seed(sprintf('mc_%s_seed%02d', family, as.integer(seed_index)), 100L)
+}
+t2_mc_root <- function() Sys.getenv('T2_CANONICAL_MC_ROOT', unset='artifacts/mc_canonical')
+t2_mc_path <- function(mode, family, seed_index, n, replications) {
+  file.path(t2_mc_root(), mode, family, sprintf('seed%02d', as.integer(seed_index)),
+            sprintf('n%s_r%s.rds', as.integer(n), as.integer(replications)))
+}
 t2_params <- function(family) switch(family,
  normal=list(mean=0,sd=1),lognormal=list(meanlog=0,sdlog=.65),
  weibull=list(shape=2,scale=1),invgauss=list(mean=1,shape=3),
  exgaussian=list(mu=0,sigma=1,tau=1),exwald=list(mu=1,lambda=3,rate=1),stop('family'))
-t2_make_scenarios <- function(mode,shard,n,replications,family='normal') {
+t2_make_scenarios <- function(mode,shard,n,replications,family='normal',seed_index=NULL) {
  cfg<-ga_config; grid<-build_contamination_grid(cfg)
  if(mode=='smoke')grid<-grid[c(1L,2L,which(grid$rate==.1)[1],which(grid$rate==.2)[1]),]
  bands<-ifelse(grid$rate==0,'clean',ifelse(grid$rate<=.05,'low',ifelse(grid$rate<=.1,'intermediate','high')))
- seed<-t2_seed(shard,100L);set.seed(seed)
+ seed<-if(is.null(seed_index)) t2_seed(shard,100L) else t2_mc_seed(family, seed_index)
+ set.seed(seed)
  params<-t2_params(family);target<-analytic_mean_from_params(family,params)
- sc<-vector('list',nrow(grid))
- for(j in seq_len(nrow(grid))) {
-  s<-grid[j,];samples<-vector('list',replications)
-  for(k in seq_len(replications)) {
-   x<-generate_population(family,n,params)
-   if(s$rate>0)x<-inject_outliers_realistic(x,contamination_rate=s$rate,outlier_scale_mad=s$scale,type=s$mechanism)
-   samples[[k]]<-x
+  sc<-vector('list',nrow(grid))
+  for(j in seq_len(nrow(grid))) {
+    s<-grid[j,];samples<-vector('list',replications)
+    for(k in seq_len(replications)) {
+      x<-generate_population(family,n,params)
+      if(s$rate>0)x<-inject_outliers_realistic(x,contamination_rate=s$rate,outlier_scale_mad=s$scale,type=s$mechanism)
+      samples[[k]]<-x
+    }
+    Tmat<-component_matrix(samples);eligible<-rep(TRUE,26L)
+    sc[[j]]<-list(T=Tmat,target=target,benchmark=precompute_benchmarks(Tmat,target,eligible),
+                  band=bands[j],eligible=eligible,scenario_id=s$scenario_id,rate=s$rate,mechanism=s$mechanism)
   }
-  sc[[j]]<-list(T=component_matrix(samples),target=target,band=bands[j],eligible=rep(TRUE,26L),scenario_id=s$scenario_id,rate=s$rate,mechanism=s$mechanism)
- }
- list(scenarios=sc,grid=grid,seed=seed,family=family,n=n,replications=replications,target=target)
+ list(scenarios=sc,grid=grid,seed=seed,family=family,n=n,replications=replications,
+      seed_index=if(is.null(seed_index)) NA_integer_ else as.integer(seed_index),
+      role=if(is.null(seed_index)) 'legacy_local' else
+        if(as.integer(seed_index)==t2_heldout_seed_index()) 'heldout' else 'training')
+}
+t2_mc_checkpoint_paths <- function(path) {
+  list(root=paste0(path, '.parts'), progress=paste0(path, '.progress.rds'))
+}
+t2_mc_generate_one <- function(family, n, replications, row, target) {
+  samples<-vector('list',replications)
+  params<-t2_params(family)
+  for(k in seq_len(replications)) {
+    x<-generate_population(family,n,params)
+    if(row$rate>0)x<-inject_outliers_realistic(x,contamination_rate=row$rate,
+                                                outlier_scale_mad=row$scale,type=row$mechanism)
+    samples[[k]]<-x
+  }
+  Tmat<-component_matrix(samples);eligible<-rep(TRUE,26L)
+  list(T=Tmat,target=target,benchmark=precompute_benchmarks(Tmat,target,eligible),
+       band=ifelse(row$rate==0,'clean',
+       ifelse(row$rate<=.05,'low',ifelse(row$rate<=.1,'intermediate','high'))),
+       eligible=eligible,scenario_id=row$scenario_id,rate=row$rate,mechanism=row$mechanism)
+}
+t2_canonical_mc <- function(mode, family, seed_index, n, replications) {
+  if (!family %in% t2_families()) stop('Unknown Monte Carlo family')
+  path <- t2_mc_path(mode, family, seed_index, n, replications)
+  if (file.exists(path)) {
+    out <- t2_read_rds(path)
+    expected <- c(family=family, n=as.character(n), replications=as.character(replications),
+                  seed_index=as.character(seed_index))
+    got <- c(family=out$family, n=as.character(out$n), replications=as.character(out$replications),
+             seed_index=as.character(out$seed_index))
+    if (!identical(unname(got), unname(expected))) stop('Canonical Monte Carlo provenance mismatch')
+    return(out)
+  }
+  cfg<-ga_config; grid<-build_contamination_grid(cfg)
+  if(mode=='smoke')grid<-grid[c(1L,2L,which(grid$rate==.1)[1],which(grid$rate==.2)[1]),]
+  cp<-t2_mc_checkpoint_paths(path)
+  dir.create(cp$root, recursive=TRUE, showWarnings=FALSE)
+  target<-analytic_mean_from_params(family,t2_params(family))
+  progress<-NULL
+  if(file.exists(cp$progress)) {
+    progress<-t2_read_rds(cp$progress)
+    expected<-list(mode=mode,family=family,seed_index=as.integer(seed_index),n=as.integer(n),
+                   replications=as.integer(replications),grid=grid)
+    if(!identical(progress[c('mode','family','seed_index','n','replications','grid')],expected))
+      stop('Canonical Monte Carlo checkpoint provenance mismatch')
+    if(!is.null(progress$rng)) assign('.Random.seed',progress$rng,envir=.GlobalEnv)
+  } else {
+    set.seed(t2_mc_seed(family,seed_index))
+    progress<-list(mode=mode,family=family,seed_index=as.integer(seed_index),n=as.integer(n),
+                   replications=as.integer(replications),grid=grid,completed=integer(),rng=.Random.seed)
+    t2_atomic_save(progress,cp$progress)
+  }
+  completed<-sort(unique(as.integer(progress$completed)))
+  if (length(completed)) {
+    part_paths<-file.path(cp$root,sprintf('scenario_%04d.rds',completed))
+    if (any(!file.exists(part_paths))) stop('Canonical Monte Carlo checkpoint is incomplete')
+  }
+  for(j in seq_len(nrow(grid))) {
+    if(j %in% completed) next
+    part<-t2_mc_generate_one(family,n,replications,grid[j,,drop=FALSE],target)
+    t2_atomic_save(part,file.path(cp$root,sprintf('scenario_%04d.rds',j)))
+    completed<-sort(c(completed,j))
+    progress$completed<-completed
+    progress$rng<-.Random.seed
+    t2_atomic_save(progress,cp$progress)
+  }
+  sc<-lapply(seq_len(nrow(grid)),function(j)
+    t2_read_rds(file.path(cp$root,sprintf('scenario_%04d.rds',j))))
+  out <- list(scenarios=sc,grid=grid,seed=t2_mc_seed(family,seed_index),family=family,
+              n=n,replications=replications,seed_index=as.integer(seed_index),
+              role=if(as.integer(seed_index)==t2_heldout_seed_index()) 'heldout' else 'training')
+  out$canonical_id <- sprintf('%s_seed%02d_n%s_r%s', family, as.integer(seed_index), n, replications)
+  out$generated_once <- TRUE
+  t2_atomic_save(out, path)
+  out
 }
 t2_models <- function(d) {
  mods<-reference_model_set()
@@ -125,13 +214,15 @@ t2_run_discovery <- function(data,mode,shard,engine='all'){
  selected <- if (engine == 'all') names(dispatch) else engine
  if (!all(selected %in% names(dispatch))) stop('Unknown discovery engine')
  engines <- setNames(lapply(selected, function(name) dispatch[[name]]()), selected)
- list(engines=engines,models=t2_models(engines),config=cfg,seed=t2_seed(shard,200))
+ list(engines=engines,models=t2_models(engines),config=cfg,seed=t2_seed(shard,200),
+      training_seed_index=as.integer(data$seed_index),
+      mc_canonical_id=if(is.null(data$canonical_id)) NA_character_ else data$canonical_id)
 }
 t2_run_heldout <- function(discovery,mode,shard,family='normal') {
  cfg<-discovery$config; replications<-if(mode=='smoke')30L else cfg$evaluation_replicates
  n_values<-if(mode=='smoke')c(200L,1000L,3000L) else cfg$heldout_n
  by_n<-lapply(seq_along(n_values),function(i){
-  n<-n_values[i];s<-t2_make_scenarios(mode,paste0(shard,'_heldout_',n),n,replications,family)$scenarios
+  n<-n_values[i];s<-t2_canonical_mc(mode, family, t2_heldout_seed_index(), n, replications)$scenarios
   per_sc<-lapply(s,function(z){scores<-score_model_set(z$T,discovery$models,z$target);scores$scenario_id<-z$scenario_id;scores$sample_n<-n;scores})
   do.call(rbind,per_sc)
  })
@@ -148,7 +239,7 @@ t2_run_stress <- function(discovery,mode,shard,family='normal') {
  stress_R <- as.integer(Sys.getenv('T2_STRESS_REPS', unset=if(mode=='full') '250' else '30'))
  if (!is.finite(stress_n) || stress_n < 20L || !is.finite(stress_R) || stress_R < 5L)
    stop('Invalid stress runtime configuration')
- x<-t2_make_scenarios(stress_mode,paste0(shard,'_stress'),stress_n,stress_R,family)
+ x<-t2_canonical_mc(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
  result<-do.call(rbind,lapply(x$scenarios,function(s){z<-score_model_set(s$T,discovery$models,s$target);z$scenario_id<-s$scenario_id;z}))
  list(scores=result,stage='stress',fixture=identical(mode, 'smoke'),stress_config=list(sample_n=stress_n,
       replications=stress_R,scenario_count=length(x$scenarios),family=family))
@@ -174,7 +265,9 @@ run_t2_stage <- function(stage,shard,mode='smoke',family='normal',seed_index=0L,
   if(!identical(out$status,'PASS'))stop('Monte Carlo validation failed')
   if(mode=='full' && !isTRUE(out$legacy_four_layer_certified))stop('Full historical four-layer certification unavailable')
  } else if(stage=='montecarlo'){
-  out<-t2_make_scenarios(mode,shard,if(mode=='smoke')30L else ga_config$train_n,if(mode=='smoke')30L else ga_config$evaluation_replicates,family)
+  n_mc <- if(mode=='smoke') 30L else ga_config$train_n
+  r_mc <- if(mode=='smoke') 30L else ga_config$evaluation_replicates
+  out<-t2_canonical_mc(mode, family, seed_index, n_mc, r_mc)
  } else if(stage=='discovery'){
   out<-t2_run_discovery(t2_require(shard,'montecarlo'),mode,shard,engine)
  } else if(stage=='heldout'){
