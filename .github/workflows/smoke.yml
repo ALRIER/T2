@@ -209,25 +209,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  canonical-montecarlo:
-    needs: [preflight, backup-preflight]
+  precomputed-montecarlo:
+    needs: preflight
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
-      max-parallel: 32
+      max-parallel: 6
       matrix:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
-        seed: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     env:
-      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
-      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
-      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
-      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
-      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
-      T2_CHECKPOINT_TRANSFER_SECONDS: '900'
-      T2_BACKUP_LOCAL_DIR: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}
+      T2_ZENODO_RECORD_ID: '23543077'
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
@@ -236,51 +229,44 @@ jobs:
           use-public-rspm: true
       - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - run: Rscript scripts/check_environment.R
-      - name: Connect runner to private backup network
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-      - name: Configure verified SSH backup endpoint
+      - name: Download public Monte Carlo package
         shell: bash
+        env:
+          FAMILY: ${{ matrix.family }}
         run: |
           set -euo pipefail
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$T2_BACKUP_SSH_KEY" > "$HOME/.ssh/id_ed25519"
-          printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
-      - name: Start canonical checkpoint backup loop
+          base="https://zenodo.org/records/${T2_ZENODO_RECORD_ID}/files"
+          mkdir -p artifacts/mc_canonical
+          curl --fail --location --retry 5 --retry-all-errors --silent --show-error \
+            "$base/SHA256SUMS?download=1" \
+            --output artifacts/mc_canonical/SHA256SUMS
+          curl --fail --location --retry 5 --retry-all-errors --silent --show-error \
+            "$base/t2_mc_v2_${FAMILY}.tar?download=1" \
+            --output "artifacts/mc_canonical/t2_mc_v2_${FAMILY}.tar"
+      - name: Verify package checksum and extract
         shell: bash
-        run: |
-          nohup scripts/checkpoint_sync_loop.sh "canonical-${{ matrix.family }}-${{ matrix.seed }}" > canonical-sync.log 2>&1 &
-          echo $! > canonical-sync.pid
-      - name: Generate canonical Monte Carlo block
         env:
-          T2_OUTPUT_ROOT: artifacts/ci
-          T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
-          T2_MC_WORKERS: '2'
-          T2_STRESS_SAMPLE_N: '1000'
-          T2_STRESS_REPS: '250'
-        run: Rscript scripts/generate_canonical_mc.R full "${{ matrix.family }}" "${{ matrix.seed }}"
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          cd artifacts/mc_canonical
+          grep " t2_mc_v2_${FAMILY}.tar$" SHA256SUMS | sha256sum -c -
+          mkdir extracted
+          tar -xf "t2_mc_v2_${FAMILY}.tar" -C extracted
+          rm "t2_mc_v2_${FAMILY}.tar"
+          shopt -s dotglob
+          mv extracted/* .
+          rmdir extracted
+      - name: Validate complete family package
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: Rscript scripts/verify_precomputed_mc.R artifacts/mc_canonical "$FAMILY"
       - uses: actions/upload-artifact@v4
         with:
-          name: mc-${{ matrix.family }}-seed-${{ matrix.seed }}
+          name: mc-precomputed-${{ matrix.family }}
           path: artifacts/mc_canonical/
           if-no-files-found: error
           retention-days: 30
-      - name: Stop canonical backup loop and publish final snapshot
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          if [[ -f canonical-sync.pid ]]; then
-            kill "$(cat canonical-sync.pid)" 2>/dev/null || true
-            wait "$(cat canonical-sync.pid)" 2>/dev/null || true
-          fi
-          scripts/checkpoint_transfer.sh push "canonical-${{ matrix.family }}-${{ matrix.seed }}" || true
-          rm -f canonical-sync.pid
 
   backup-preflight:
     needs: preflight
@@ -308,7 +294,7 @@ jobs:
           echo "BACKUP PREFLIGHT PASS: cloud jobs have a configured local-backup route"
 
   full:
-    needs: [preflight, plan, shared-validation, backup-preflight, canonical-montecarlo]
+    needs: [preflight, plan, shared-validation, backup-preflight, precomputed-montecarlo]
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -320,6 +306,7 @@ jobs:
       T2_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' && '1' || '0' }}
       SHARD: ${{ matrix.family }}_${{ matrix.engine }}_seed${{ matrix.seed }}
       T2_OUTPUT_ROOT: artifacts/ci
+      T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
       T2_SHARED_SHARD: shared
       T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
       T2_REQUIRE_CANONICAL_STRESS: '1'
@@ -332,15 +319,10 @@ jobs:
       T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
-      - name: Restore canonical Monte Carlo blocks
+      - name: Restore precomputed Monte Carlo family package
         uses: actions/download-artifact@v5
         with:
-          name: mc-${{ matrix.family }}-seed-${{ matrix.seed }}
-          path: artifacts/mc_canonical/
-      - name: Restore reserved held-out Monte Carlo block
-        uses: actions/download-artifact@v5
-        with:
-          name: mc-${{ matrix.family }}-seed-8
+          name: mc-precomputed-${{ matrix.family }}
           path: artifacts/mc_canonical/
       - name: Restore shared validations and prepared real-world bundle
         uses: actions/download-artifact@v5
