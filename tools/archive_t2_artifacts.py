@@ -12,6 +12,9 @@ import os
 from pathlib import Path
 import tempfile
 from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, build_opener
+from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from zipfile import ZipFile
 
 API = "https://api.github.com"
@@ -24,6 +27,31 @@ def request(url):
         "X-GitHub-Api-Version": "2022-11-28",
     }
     return urlopen(Request(url, headers=headers), timeout=180)
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+def download(url):
+    """Open an artifact download without leaking the API token on redirect."""
+    token = os.environ["GITHUB_TOKEN"]
+    req = Request(url, headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    })
+    try:
+        return build_opener(NoRedirect()).open(req, timeout=180)
+    except HTTPError as error:
+        location = error.headers.get("Location")
+        if error.code not in (301, 302, 303, 307, 308) or not location:
+            raise
+        host = (urlsplit(location).hostname or "").lower()
+        if not (host.endswith(".blob.core.windows.net") or
+                host.endswith(".actions.githubusercontent.com")):
+            raise RuntimeError("Unexpected artifact redirect host: " + host)
+        # The redirect URL is signed; do not send the GitHub token to it.
+        return urlopen(location, timeout=180)
 
 def sha256(path):
     h = hashlib.sha256()
@@ -72,7 +100,7 @@ def main():
             os.close(fd)
             try:
                 h = hashlib.sha256()
-                with request(a["archive_download_url"]) as response, open(tmp, "wb") as stream:
+                with download(a["archive_download_url"]) as response, open(tmp, "wb") as stream:
                     for block in iter(lambda: response.read(1024 * 1024), b""):
                         stream.write(block)
                         h.update(block)

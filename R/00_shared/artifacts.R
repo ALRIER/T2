@@ -61,6 +61,10 @@ t2_read_rds <- function(path) {
     stop('Chunked RDS checksum mismatch')
   raw <- do.call(c, lapply(part_paths, function(p) readBin(p, 'raw', n=file.info(p)$size)))
   con <- rawConnection(raw, 'rb'); on.exit(close(con), add=TRUE)
+  # saveRDS() normally emits a gzip stream.  A rawConnection does not
+  # transparently decompress it, so wrap the reconstructed stream explicitly.
+  if (length(raw) >= 2L && identical(as.integer(raw[1:2]), c(31L, 139L)))
+    con <- gzcon(con)
   readRDS(con)
 }
 
