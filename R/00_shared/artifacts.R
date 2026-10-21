@@ -82,6 +82,27 @@ t2_write_csv <- function(x, path) {
   }
   invisible(path)
 }
+t2_matrix_format <- function() {
+  fmt<-tolower(Sys.getenv('T2_MATRIX_FORMAT',unset='csv'))
+  if(!fmt%in%c('csv','rds','parquet'))stop('T2_MATRIX_FORMAT must be csv, rds or parquet')
+  if(fmt=='parquet'&&!requireNamespace('arrow',quietly=TRUE))
+    stop('T2_MATRIX_FORMAT=parquet requires the arrow package')
+  fmt
+}
+t2_write_matrix <- function(x, path_without_extension) {
+  fmt<-t2_matrix_format()
+  if(fmt=='csv') return(t2_write_csv(x,paste0(path_without_extension,'.csv')))
+  if(fmt=='rds') return(t2_atomic_save(as.matrix(x),paste0(path_without_extension,'.rds')))
+  path<-paste0(path_without_extension,'.parquet')
+  dir.create(dirname(path),recursive=TRUE,showWarnings=FALSE)
+  tmp<-paste0(path,'.',Sys.getpid(),'.tmp')
+  arrow::write_parquet(as.data.frame(x),tmp)
+  if(file.info(tmp)$size>t2_max_file_bytes()) {
+    file.remove(tmp);stop('Parquet matrix exceeds T2_MAX_FILE_MB')
+  }
+  if(!file.rename(tmp,path))stop('Failed atomic Parquet write')
+  invisible(path)
+}
 
 t2_append_csv <- function(x, path) {
   dir.create(dirname(path), recursive=TRUE, showWarnings=FALSE)
@@ -112,10 +133,12 @@ t2_emit_stage_artifacts <- function(out, shard, stage, mode, family, seed, start
   t2_atomic_save(out, file.path(d$results, paste0(stage, '.rds')))
   if (!is.null(out$manifest)) t2_write_csv(out$manifest, file.path(d$raw, 'dataset_manifest.csv'))
   if (!is.null(out$empirical_manifest)) t2_write_csv(out$empirical_manifest, file.path(d$raw, 'mc_empirical_manifest.csv'))
+  if (!is.null(out$canonical_reference))
+    t2_write_csv(out$canonical_reference, file.path(d$raw, 'canonical_mc_reference.csv'))
   if (!is.null(out$layers)) t2_write_csv(out$layers, file.path(d$results, 'validation_layers.csv'))
   if (!is.null(out$grid)) t2_write_csv(out$grid, file.path(d$raw, 'scenario_grid.csv'))
   if (!is.null(out$scenarios)) for (i in seq_along(out$scenarios))
-    t2_write_csv(out$scenarios[[i]]$T, file.path(d$raw, sprintf('scenario_%04d_matrix.csv', i)))
+    t2_write_matrix(out$scenarios[[i]]$T, file.path(d$raw, sprintf('scenario_%04d_matrix', i)))
   if (!is.null(out$engines)) for (nm in names(out$engines)) {
     z <- out$engines[[nm]]
     t2_write_csv(z$objectives, file.path(d$results, paste0('engine_', nm, '_objectives.csv')))

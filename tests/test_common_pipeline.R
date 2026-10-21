@@ -1,5 +1,13 @@
 source('R/00_shared/load_all.R');t2_load()
 stopifnot(length(ESTIMATOR_REGISTRY)==26L,length(reference_model_set())==4L)
+set.seed(101)
+x <- rlnorm(80L)
+reference_components <- vapply(ESTIMATOR_REGISTRY, function(fun) {
+  z <- tryCatch(as.numeric(fun(x))[1], error=function(e) NA_real_)
+  if (!is.finite(z)) stop('Reference estimator returned nonfinite value')
+  z
+}, numeric(1L))
+stopifnot(max(abs(component_vector(x)-reference_components)) < 1e-10)
 T<-matrix(rnorm(80L*26L),ncol=26L);colnames(T)<-ESTIMATOR_NAMES
 models<-c(reference_model_set(),list(new_frozen_model('GA_frozen',weights=rep(1,26))))
 y<-score_model_set(T,models,0)

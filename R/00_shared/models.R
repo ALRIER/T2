@@ -34,11 +34,29 @@ score_model_set <- function(T,models,target,eligible=rep(TRUE,26L)) {
 component_vector <- function(x) {
   x<-as.numeric(x);x<-x[is.finite(x)]
   if(length(x)<5L) stop('At least five finite observations needed')
-  vapply(ESTIMATOR_REGISTRY,function(fun){
-    z<-tryCatch(as.numeric(fun(x))[1],error=function(e) NA_real_)
+  out<-setNames(rep(NA_real_,length(ESTIMATOR_NAMES)),ESTIMATOR_NAMES)
+  out['mean']<-mean(x)
+  out['median']<-stats::median(x)
+  out['trimmed20']<-mean(x,trim=.20)
+  xp<-x[x>0]
+  out['harmonic']<-if(length(xp))length(xp)/sum(1/xp) else out['median']
+  out['geometric']<-if(length(xp))exp(mean(log(xp))) else out['median']
+  q<-stats::quantile(x,probs=c(.05,.10,.20,.25,.50,.75,.80,.90,.95),
+                     names=FALSE,type=8,na.rm=TRUE)
+  out['trimean']<-(q[4L]+2*q[5L]+q[6L])/4
+  out['winsorized_0.05']<-mean(pmin(pmax(x,q[1L]),q[9L]))
+  out['winsorized_0.1']<-mean(pmin(pmax(x,q[2L]),q[8L]))
+  out['winsorized_0.2']<-mean(pmin(pmax(x,q[3L]),q[7L]))
+  out['mom_k5']<-median_of_means_safe(x,5L)
+  out['mom_k10']<-median_of_means_safe(x,10L)
+  out['mom_k20']<-median_of_means_safe(x,20L)
+  slow<-setdiff(ESTIMATOR_NAMES,names(out)[!is.na(out)])
+  for(nm in slow) {
+    z<-tryCatch(as.numeric(ESTIMATOR_REGISTRY[[nm]](x))[1],error=function(e) NA_real_)
     if(!is.finite(z)) stop('Estimator returned nonfinite component')
-    z
-  },numeric(1L))
+    out[nm]<-z
+  }
+  out
 }
 component_matrix <- function(samples) {
   out<-t(vapply(samples,component_vector,numeric(26L)))

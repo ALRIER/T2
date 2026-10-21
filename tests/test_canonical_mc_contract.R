@@ -15,5 +15,7 @@ stopifnot(isTRUE(a$generated_once), identical(a$seed, b$seed),
           a$seed_index == 0L, h$seed_index == 8L, !identical(a$seed, h$seed),
           identical(a$scenarios, resumed$scenarios), file.exists(final_path),
           file.exists(paste0(final_path, '.progress.rds')),
-          length(list.files(paste0(final_path, '.parts'))) == 4L)
+          file.exists(file.path(paste0(final_path, '.parts'), 'base_samples.rds')),
+          length(grep('^scenario_[0-9]+\\.rds$',
+                      list.files(paste0(final_path, '.parts')))) == 4L)
 cat('CANONICAL MC CONTRACT PASS\n')

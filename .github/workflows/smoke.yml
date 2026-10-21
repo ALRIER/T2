@@ -64,6 +64,7 @@ jobs:
       T2_REALWORLD_MANIFEST: config/public_datasets_smoke.csv
       T2_REALWORLD_REPS: '20'
       T2_REALWORLD_SAMPLE_SIZES: '200'
+      T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
@@ -199,6 +200,7 @@ jobs:
         env:
           T2_OUTPUT_ROOT: artifacts/ci
           T2_CANONICAL_MC_ROOT: artifacts/mc_canonical
+          T2_MC_WORKERS: '2'
         run: Rscript scripts/generate_canonical_mc.R full "${{ matrix.family }}" "${{ matrix.seed }}"
       - uses: actions/upload-artifact@v4
         with:
@@ -251,6 +253,7 @@ jobs:
       T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
       T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
       T2_CHECKPOINT_TRANSFER_SECONDS: '900'
+      T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
       - name: Restore canonical Monte Carlo blocks

@@ -8,9 +8,21 @@ t2_heldout_seed_index <- function() as.integer(ga_config$heldout_seed_index)
 t2_mc_seed <- function(family, seed_index) {
   t2_seed(sprintf('mc_%s_seed%02d', family, as.integer(seed_index)), 100L)
 }
+t2_mc_scenario_seed <- function(family, seed_index, scenario_id, shard=NULL) {
+  key <- if (is.null(shard)) sprintf('mc_%s_seed%02d_scenario%04d', family,
+                                     as.integer(seed_index), as.integer(scenario_id)) else
+    sprintf('mc_%s_scenario%04d', shard, as.integer(scenario_id))
+  t2_seed(key, 200L)
+}
+t2_mc_version <- function() 'v2_shared_base_crn'
+t2_mc_workers <- function() {
+  x<-as.integer(Sys.getenv('T2_MC_WORKERS',unset='1'))
+  if(!is.finite(x)||x<1L)stop('T2_MC_WORKERS must be a positive integer')
+  if(.Platform$OS.type!='unix')1L else x
+}
 t2_mc_root <- function() Sys.getenv('T2_CANONICAL_MC_ROOT', unset='artifacts/mc_canonical')
 t2_mc_path <- function(mode, family, seed_index, n, replications) {
-  file.path(t2_mc_root(), mode, family, sprintf('seed%02d', as.integer(seed_index)),
+  file.path(t2_mc_root(), t2_mc_version(), mode, family, sprintf('seed%02d', as.integer(seed_index)),
             sprintf('n%s_r%s.rds', as.integer(n), as.integer(replications)))
 }
 t2_params <- function(family) switch(family,
@@ -21,21 +33,13 @@ t2_make_scenarios <- function(mode,shard,n,replications,family='normal',seed_ind
  cfg<-ga_config; grid<-build_contamination_grid(cfg)
  if(mode=='smoke')grid<-grid[c(1L,2L,which(grid$rate==.1)[1],which(grid$rate==.2)[1]),]
  bands<-ifelse(grid$rate==0,'clean',ifelse(grid$rate<=.05,'low',ifelse(grid$rate<=.1,'intermediate','high')))
- seed<-if(is.null(seed_index)) t2_seed(shard,100L) else t2_mc_seed(family, seed_index)
- set.seed(seed)
- params<-t2_params(family);target<-analytic_mean_from_params(family,params)
-  sc<-vector('list',nrow(grid))
-  for(j in seq_len(nrow(grid))) {
-    s<-grid[j,];samples<-vector('list',replications)
-    for(k in seq_len(replications)) {
-      x<-generate_population(family,n,params)
-      if(s$rate>0)x<-inject_outliers_realistic(x,contamination_rate=s$rate,outlier_scale_mad=s$scale,type=s$mechanism)
-      samples[[k]]<-x
-    }
-    Tmat<-component_matrix(samples);eligible<-rep(TRUE,26L)
-    sc[[j]]<-list(T=Tmat,target=target,benchmark=precompute_benchmarks(Tmat,target,eligible),
-                  band=bands[j],eligible=eligible,scenario_id=s$scenario_id,rate=s$rate,mechanism=s$mechanism)
-  }
+  seed<-if(is.null(seed_index)) t2_seed(shard,100L) else t2_mc_seed(family, seed_index)
+  params<-t2_params(family);target<-analytic_mean_from_params(family,params)
+  set.seed(seed)
+  base_samples<-vapply(seq_len(replications),function(k)generate_population(family,n,params),numeric(n))
+  sc<-lapply(seq_len(nrow(grid)),function(j)
+    t2_mc_generate_one(family,n,replications,grid[j,,drop=FALSE],target,base_samples,
+                       if(is.null(seed_index))NULL else seed_index,shard))
  list(scenarios=sc,grid=grid,seed=seed,family=family,n=n,replications=replications,
       seed_index=if(is.null(seed_index)) NA_integer_ else as.integer(seed_index),
       role=if(is.null(seed_index)) 'legacy_local' else
@@ -44,11 +48,14 @@ t2_make_scenarios <- function(mode,shard,n,replications,family='normal',seed_ind
 t2_mc_checkpoint_paths <- function(path) {
   list(root=paste0(path, '.parts'), progress=paste0(path, '.progress.rds'))
 }
-t2_mc_generate_one <- function(family, n, replications, row, target) {
+t2_mc_generate_one <- function(family, n, replications, row, target, base_samples,
+                                seed_index=NULL, shard=NULL) {
+  if (!is.matrix(base_samples) || nrow(base_samples)!=n || ncol(base_samples)!=replications)
+    stop('Invalid canonical Monte Carlo base sample pool')
+  if (row$rate > 0) set.seed(t2_mc_scenario_seed(family, seed_index, row$scenario_id, shard))
   samples<-vector('list',replications)
-  params<-t2_params(family)
   for(k in seq_len(replications)) {
-    x<-generate_population(family,n,params)
+    x<-base_samples[,k]
     if(row$rate>0)x<-inject_outliers_realistic(x,contamination_rate=row$rate,
                                                 outlier_scale_mad=row$scale,type=row$mechanism)
     samples[[k]]<-x
@@ -76,18 +83,28 @@ t2_canonical_mc <- function(mode, family, seed_index, n, replications) {
   cp<-t2_mc_checkpoint_paths(path)
   dir.create(cp$root, recursive=TRUE, showWarnings=FALSE)
   target<-analytic_mean_from_params(family,t2_params(family))
+  base_path<-file.path(cp$root,'base_samples.rds')
+  if (file.exists(base_path)) {
+    base_samples<-t2_read_rds(base_path)
+  } else {
+    set.seed(t2_mc_seed(family,seed_index))
+    params<-t2_params(family)
+    base_samples<-vapply(seq_len(replications),function(k)generate_population(family,n,params),numeric(n))
+    t2_atomic_save(base_samples,base_path)
+  }
   progress<-NULL
   if(file.exists(cp$progress)) {
     progress<-t2_read_rds(cp$progress)
     expected<-list(mode=mode,family=family,seed_index=as.integer(seed_index),n=as.integer(n),
-                   replications=as.integer(replications),grid=grid)
-    if(!identical(progress[c('mode','family','seed_index','n','replications','grid')],expected))
+                   replications=as.integer(replications),grid=grid,
+                   mc_version=t2_mc_version(),base_seed=t2_mc_seed(family,seed_index))
+    if(!identical(progress[c('mode','family','seed_index','n','replications','grid',
+                             'mc_version','base_seed')],expected))
       stop('Canonical Monte Carlo checkpoint provenance mismatch')
-    if(!is.null(progress$rng)) assign('.Random.seed',progress$rng,envir=.GlobalEnv)
   } else {
-    set.seed(t2_mc_seed(family,seed_index))
     progress<-list(mode=mode,family=family,seed_index=as.integer(seed_index),n=as.integer(n),
-                   replications=as.integer(replications),grid=grid,completed=integer(),rng=.Random.seed)
+                   replications=as.integer(replications),grid=grid,completed=integer(),
+                   mc_version=t2_mc_version(),base_seed=t2_mc_seed(family,seed_index))
     t2_atomic_save(progress,cp$progress)
   }
   completed<-sort(unique(as.integer(progress$completed)))
@@ -95,20 +112,28 @@ t2_canonical_mc <- function(mode, family, seed_index, n, replications) {
     part_paths<-file.path(cp$root,sprintf('scenario_%04d.rds',completed))
     if (any(!file.exists(part_paths))) stop('Canonical Monte Carlo checkpoint is incomplete')
   }
-  for(j in seq_len(nrow(grid))) {
-    if(j %in% completed) next
-    part<-t2_mc_generate_one(family,n,replications,grid[j,,drop=FALSE],target)
-    t2_atomic_save(part,file.path(cp$root,sprintf('scenario_%04d.rds',j)))
-    completed<-sort(c(completed,j))
-    progress$completed<-completed
-    progress$rng<-.Random.seed
-    t2_atomic_save(progress,cp$progress)
+  todo<-setdiff(seq_len(nrow(grid)),completed)
+  workers<-min(t2_mc_workers(),length(todo))
+  batches<-if(!length(todo))list() else split(todo,ceiling(seq_along(todo)/workers))
+  for(batch in batches) {
+    parts<-if(workers>1L) parallel::mclapply(batch,function(j)
+      t2_mc_generate_one(family,n,replications,grid[j,,drop=FALSE],target,base_samples,seed_index),
+      mc.cores=length(batch),mc.preschedule=FALSE) else
+      lapply(batch,function(j)t2_mc_generate_one(family,n,replications,grid[j,,drop=FALSE],
+                                                  target,base_samples,seed_index))
+    for(i in seq_along(batch)) {
+      j<-batch[i];t2_atomic_save(parts[[i]],file.path(cp$root,sprintf('scenario_%04d.rds',j)))
+      completed<-sort(c(completed,j));progress$completed<-completed
+      t2_atomic_save(progress,cp$progress)
+    }
   }
   sc<-lapply(seq_len(nrow(grid)),function(j)
     t2_read_rds(file.path(cp$root,sprintf('scenario_%04d.rds',j))))
   out <- list(scenarios=sc,grid=grid,seed=t2_mc_seed(family,seed_index),family=family,
               n=n,replications=replications,seed_index=as.integer(seed_index),
-              role=if(as.integer(seed_index)==t2_heldout_seed_index()) 'heldout' else 'training')
+              role=if(as.integer(seed_index)==t2_heldout_seed_index()) 'heldout' else 'training',
+              mc_version=t2_mc_version(),base_pool_reused=TRUE,
+              scenario_seed_scheme='family_seed_scenario_id')
   out$canonical_id <- sprintf('%s_seed%02d_n%s_r%s', family, as.integer(seed_index), n, replications)
   out$generated_once <- TRUE
   t2_atomic_save(out, path)
@@ -202,6 +227,11 @@ t2_run_mc_validation <- function(mode,shard) {
    legacy_four_layer_certified=isTRUE(mode == 'full' && audits$status == 'PASS' && anchor$status == 'PASS'))
 }
 t2_run_discovery <- function(data,mode,shard,engine='all'){
+ if(is.null(data$scenarios)) {
+   if(is.null(data$family)||is.null(data$seed_index)||is.null(data$n)||is.null(data$replications))
+     stop('Monte Carlo reference is incomplete')
+   data<-t2_canonical_mc(mode,data$family,data$seed_index,data$n,data$replications)
+ }
  cfg<-ga_config
  if(mode=='smoke'){cfg$population<-8L;cfg$generations<-2L;cfg$patience<-2L;cfg$bootstrap_B<-100L}
  s<-data$scenarios
@@ -267,7 +297,14 @@ run_t2_stage <- function(stage,shard,mode='smoke',family='normal',seed_index=0L,
  } else if(stage=='montecarlo'){
   n_mc <- if(mode=='smoke') 30L else ga_config$train_n
   r_mc <- if(mode=='smoke') 30L else ga_config$evaluation_replicates
-  out<-t2_canonical_mc(mode, family, seed_index, n_mc, r_mc)
+  mc<-t2_canonical_mc(mode, family, seed_index, n_mc, r_mc)
+  out<-list(stage='montecarlo',canonical_id=mc$canonical_id,family=family,
+            seed_index=as.integer(seed_index),n=as.integer(n_mc),replications=as.integer(r_mc),
+            mc_version=mc$mc_version,base_pool_reused=mc$base_pool_reused,
+            scenario_seed_scheme=mc$scenario_seed_scheme,
+            canonical_reference=data.frame(canonical_id=mc$canonical_id,version=mc$mc_version,
+              family=family,seed_index=as.integer(seed_index),sample_n=as.integer(n_mc),
+              replications=as.integer(r_mc),storage_root=t2_mc_root(),stringsAsFactors=FALSE))
  } else if(stage=='discovery'){
   out<-t2_run_discovery(t2_require(shard,'montecarlo'),mode,shard,engine)
  } else if(stage=='heldout'){

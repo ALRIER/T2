@@ -4,6 +4,11 @@ Every independent run is a shard identified by family, optimizer engine and seed
 
 `T2_MAX_FILE_MB` controls the maximum artifact part size and defaults to `25`. Oversized CSVs are split into `.part-####.csv` files; oversized RDS payloads are split into `.part-####` files with a small RDS index and SHA-256 checksums. A stage cannot receive a `COMPLETE` marker if any artifact part is missing, oversized or corrupt.
 
+Raw component matrices use `T2_MATRIX_FORMAT`. `csv` remains the compatibility
+default for local inspection; Actions uses `rds` for smaller and faster dense-matrix
+artifacts. `parquet` is supported when the optional `arrow` package is installed,
+but is not mandatory because a nested scenario object is not naturally columnar.
+
 ```text
 artifacts/<shard>/<stage>/
   raw/          immutable inputs and generated matrices
