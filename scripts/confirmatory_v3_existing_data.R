@@ -10,7 +10,7 @@ stage <- args[[1L]]
 family <- if (length(args) >= 2L) args[[2L]] else 'all'
 seed <- if (length(args) >= 3L) as.integer(args[[3L]]) else NA_integer_
 valid <- c('stress_score', 'stress_inference', 'realworld_score',
-           'realworld_inference', 'report')
+           'realworld_inference', 'selection', 'report')
 if (!stage %in% valid) stop('Unsupported stage: ', stage)
 
 source('R/00_shared/load_all.R'); t2_load('.')
@@ -183,6 +183,57 @@ joint_report <- function() {
   invisible(final)
 }
 
+# This is deliberately separate from real-world scoring.  Seeds 21--26 form
+# one locked synthetic confirmation layer: stress is an adverse-condition
+# analysis of the same independent seed blocks, not a second independent
+# held-out panel.  The resulting manifest freezes the family/engine scope
+# before the external real-world workflow is dispatched.
+select_finalists <- function() {
+  fams <- t2_families()
+  mc <- do.call(rbind, lapply(fams, function(f) {
+    p <- file.path(Sys.getenv('T2_MC_INFERENCE_ROOT', 'artifacts/confirmatory_v2/inference'),
+                   f, 'primary_inference.csv')
+    if (!file.exists(p)) stop('Missing Monte Carlo inference: ', p)
+    read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
+  }))
+  st <- do.call(rbind, lapply(fams, function(f) {
+    p <- file.path(v3_root(), 'stress_inference', f, 'stress_primary.csv')
+    if (!file.exists(p)) stop('Missing stress inference: ', p)
+    read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
+  }))
+  selection <- merge(layer_table(mc, 'mc'), layer_table(st, 'stress'),
+                     by = c('key', 'family', 'engine'), all = FALSE)
+  if (nrow(selection) != length(fams) * 4L || anyDuplicated(selection$key))
+    stop('Expected one frozen selection row for every family/engine hypothesis')
+  selection$mc_stress_mse_confirmed <- selection$mc_mse_confirmed &
+    selection$stress_mse_confirmed
+  selection$mc_stress_q95_confirmed <- selection$mc_q95_confirmed &
+    selection$stress_q95_confirmed
+  selection$frozen_for_realworld <- selection$mc_stress_mse_confirmed &
+    selection$mc_stress_q95_confirmed
+  selection$selection_rule <- paste(
+    'locked MC seed blocks 21-26 plus stress robustness;',
+    'both MSE and q95 must satisfy CI and BH-FDR criteria in both analyses')
+  selection$selection_role <- ifelse(selection$frozen_for_realworld,
+                                     'primary_realworld_candidate',
+                                     'negative_control_or_not_selected')
+  root <- file.path(v3_root(), 'selection')
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  t2_write_csv(selection, file.path(root, 'frozen_family_engine_manifest.csv'))
+  t2_write_csv(selection[selection$frozen_for_realworld,
+                          c('family', 'engine', 'key', 'selection_rule'), drop = FALSE],
+               file.path(root, 'frozen_realworld_candidates.csv'))
+  writeLines(c('# T2 frozen real-world candidate manifest', '',
+    paste0('- hypotheses assessed: ', nrow(selection)),
+    paste0('- candidates frozen for independent real-world audit: ',
+           sum(selection$frozen_for_realworld)),
+    '- Seeds 21-26 are one locked synthetic confirmation panel.',
+    '- The real-world layer is not run or inspected by this selection stage.'),
+    file.path(root, 'selection_report.md'))
+  writeLines('confirmatory_v3_selection COMPLETE', file.path(root, 'selection.status'))
+  invisible(selection)
+}
+
 if (stage == 'stress_score') {
   if (!family %in% t2_families() || is.na(seed) || !seed %in% 21:26) stop('Expected FAMILY and seed 21..26')
   score_stress(family, seed)
@@ -193,6 +244,8 @@ if (stage == 'stress_score') {
   t2_confirmatory_realworld_score('full')
 } else if (stage == 'realworld_inference') {
   t2_confirmatory_realworld_inference('full')
+} else if (stage == 'selection') {
+  select_finalists()
 } else if (stage == 'report') {
   joint_report()
 }

@@ -1,0 +1,149 @@
+name: T2 Confirmatory V3 — stress and frozen selection
+
+on:
+  workflow_dispatch:
+    inputs:
+      zenodo_record_id:
+        description: 'Published Zenodo record containing the verified T2 backup payload'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  T2_CONFIRMATORY_V3_ROOT: artifacts/confirmatory_v3
+  T2_MC_INFERENCE_ROOT: artifacts/confirmatory_v2/inference
+  T2_MATRIX_FORMAT: rds
+  T2_MAX_FILE_MB: '25'
+  T2_STRESS_SAMPLE_N: '1000'
+  T2_STRESS_REPS: '250'
+
+jobs:
+  archive-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RECORD: ${{ inputs.zenodo_record_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify complete archived inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://zenodo.org/records/${RECORD}/files"
+          mkdir -p artifacts/zenodo_input
+          curl --fail --location --retry 5 "${base}/backup_manifest.json?download=1" -o artifacts/zenodo_input/backup_manifest.json
+          curl --fail --location --retry 5 "${base}/SHA256SUMS?download=1" -o artifacts/zenodo_input/SHA256SUMS
+          jq -e '.format == "t2_confirmatory_backup_v1" and (.missing | length == 0)' artifacts/zenodo_input/backup_manifest.json
+          jq -e '.expected.mc == 72 and .observed.mc == 72 and .expected.validation == 36 and .observed.score == 36 and .observed.inference == 6' artifacts/zenodo_input/backup_manifest.json
+
+  stress-score:
+    needs: archive-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        validation_seed: [21, 22, 23, 24, 25, 26]
+    env:
+      RECORD: ${{ inputs.zenodo_record_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Restore canonical validation block
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/zenodo_input
+          base="https://zenodo.org/records/${RECORD}/files"
+          file="t2_validation_${{ matrix.family }}_seeds21_26.tar"
+          curl --fail --location --retry 5 "${base}/${file}?download=1" -o "artifacts/zenodo_input/${file}"
+          curl --fail --location --retry 5 "${base}/SHA256SUMS?download=1" -o artifacts/zenodo_input/SHA256SUMS
+          expected=$(awk -v f="$file" '$2 == f {print $1}' artifacts/zenodo_input/SHA256SUMS)
+          actual=$(sha256sum "artifacts/zenodo_input/${file}" | awk '{print $1}')
+          test -n "$expected" && test "$expected" = "$actual"
+          tar -xf "artifacts/zenodo_input/${file}"
+      - run: Rscript scripts/confirmatory_v3_existing_data.R stress_score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-v3-stress-${{ matrix.family }}-seed-${{ matrix.validation_seed }}
+          path: artifacts/confirmatory_v3/stress/${{ matrix.family }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  stress-inference:
+    needs: stress-score
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: confirmatory-v3-stress-${{ matrix.family }}-seed-*
+          merge-multiple: true
+          path: artifacts/confirmatory_v3/stress/${{ matrix.family }}/
+      - run: Rscript scripts/confirmatory_v3_existing_data.R stress_inference "${{ matrix.family }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: confirmatory-v3-stress-inference-${{ matrix.family }}
+          path: artifacts/confirmatory_v3/stress_inference/${{ matrix.family }}/
+          if-no-files-found: error
+          retention-days: 180
+
+  freeze-realworld-candidates:
+    needs: stress-inference
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RECORD: ${{ inputs.zenodo_record_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: confirmatory-v3-stress-inference-*
+          merge-multiple: true
+          path: artifacts/confirmatory_v3/stress_inference/
+      - name: Restore Monte Carlo inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/zenodo_input
+          base="https://zenodo.org/records/${RECORD}/files"
+          curl --fail --location --retry 5 "${base}/SHA256SUMS?download=1" -o artifacts/zenodo_input/SHA256SUMS
+          for family in normal lognormal weibull invgauss exgaussian exwald; do
+            file="t2_confirmatory_inference_${family}.tar"
+            curl --fail --location --retry 5 "${base}/${file}?download=1" -o "artifacts/zenodo_input/${file}"
+            expected=$(awk -v f="$file" '$2 == f {print $1}' artifacts/zenodo_input/SHA256SUMS)
+            actual=$(sha256sum "artifacts/zenodo_input/${file}" | awk '{print $1}')
+            test -n "$expected" && test "$expected" = "$actual"
+            tar -xf "artifacts/zenodo_input/${file}"
+          done
+      - run: Rscript scripts/confirmatory_v3_existing_data.R selection
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-frozen-realworld-candidates
+          path: artifacts/confirmatory_v3/selection/
+          if-no-files-found: error
+          retention-days: 180
