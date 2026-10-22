@@ -1,0 +1,114 @@
+name: Independent validation extension (seeds 21-26)
+on:
+  workflow_run:
+    workflows: ["Extended Monte Carlo (seeds 09-20)"]
+    types: [completed]
+    branches: [experiment/montecarlo-seeds-09-20]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prerequisite:
+    if: ${{ github.event.workflow_run.id == 39695221993 && github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm source workflow and run
+        run: |
+          echo "Extended Monte Carlo run ${{ github.event.workflow_run.id }} succeeded."
+
+  validation-data:
+    needs: prerequisite
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        seed: [21, 22, 23, 24, 25, 26]
+    env:
+      T2_MC_WORKERS: '2'
+      T2_STRESS_SAMPLE_N: '1000'
+      T2_STRESS_REPS: '250'
+      T2_BACKUP_HOST: ${{ vars.T2_BACKUP_HOST }}
+      T2_BACKUP_USER: ${{ vars.T2_BACKUP_USER }}
+      T2_BACKUP_ROOT: ${{ vars.T2_BACKUP_ROOT }}
+      T2_BACKUP_SSH_KEY: ${{ secrets.T2_BACKUP_SSH_KEY }}
+      T2_BACKUP_KNOWN_HOSTS: ${{ secrets.T2_BACKUP_KNOWN_HOSTS }}
+      T2_BACKUP_LOCAL_DIR: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/independent-validation-21-26
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/check_environment.R
+      - name: Connect private backup network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Configure SSH backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$T2_BACKUP_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
+      - name: Begin periodic backups
+        shell: bash
+        run: |
+          nohup scripts/checkpoint_sync_loop.sh "validation-${{ matrix.family }}-${{ matrix.seed }}" > sync.log 2>&1 &
+          echo $! > sync.pid
+      - name: Generate reserved heldout and stress test data
+        run: Rscript tools/independent_validation_data.R "${{ matrix.family }}" "${{ matrix.seed }}"
+      - name: Save independent validation datasets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ matrix.family }}-seed-${{ matrix.seed }}
+          path: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}/
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Final local backup
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -f sync.pid ]]; then kill "$(cat sync.pid)" 2>/dev/null || true; fi
+          scripts/checkpoint_transfer.sh push "validation-${{ matrix.family }}-${{ matrix.seed }}" || true
+  realworld-data:
+    needs: prerequisite
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/independent-validation-21-26
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/check_environment.R
+      - name: Prepare shared real-world data (not reseeded)
+        env:
+          T2_OUTPUT_ROOT: artifacts/ci
+          T2_REALWORLD_REPS: '500'
+          T2_REALWORLD_SAMPLE_SIZES: '200,1000,3000'
+          T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
+        run: Rscript scripts/build_realworld_bundle.R full
+      - uses: actions/upload-artifact@v4
+        with:
+          name: independent-validation-realworld-input
+          path: artifacts/ci/shared/
+          retention-days: 30
+          if-no-files-found: error
