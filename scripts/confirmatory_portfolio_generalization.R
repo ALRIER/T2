@@ -204,7 +204,10 @@ report_portfolio <- function() {
     out <- aggregate(rep(1L,nrow(z)), by=z[c('winner_level','source_family','target_family','relation','metric','winner')], FUN=sum)
     names(out)[ncol(out)] <- 'regional_wins'; names(out)[names(out) == 'winner'] <- id; out
   }
-  championship <- rbind(win_summary(estimator_winners, 'estimator_id'), win_summary(engine_winners, 'engine'))
+  # Keep a common winner identifier column across levels; winner_level identifies
+  # estimator and engine rows, avoiding invalid rbind column-name mismatches.
+  championship <- rbind(win_summary(estimator_winners, 'winner'),
+                        win_summary(engine_winners, 'winner'))
   out_root <- file.path(pg_root(), 'report'); dir.create(out_root, recursive=TRUE, showWarnings=FALSE)
   t2_write_csv(estimator, file.path(out_root, 'estimator_region_taxonomy_all.csv'))
   t2_write_csv(engine, file.path(out_root, 'engine_region_taxonomy_all.csv'))
