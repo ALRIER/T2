@@ -1,4 +1,4 @@
-name: T2 Confirmatory V3 — stress selection from Actions artifacts
+name: T2 Confirmatory V3 — stress taxonomy from Actions artifacts
 
 on:
   workflow_dispatch:
@@ -110,7 +110,7 @@ jobs:
           if-no-files-found: error
           retention-days: 180
 
-  freeze-realworld-candidates:
+  freeze-complete-taxonomy:
     needs: stress-inference
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -139,10 +139,10 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "/tmp/${artifact}.zip"
             unzip -q "/tmp/${artifact}.zip" -d .
           done
-      - run: Rscript scripts/confirmatory_v3_existing_data.R selection
+      - run: Rscript scripts/confirmatory_v3_existing_data.R taxonomy_manifest
       - uses: actions/upload-artifact@v4
         with:
-          name: t2-frozen-realworld-candidates
-          path: artifacts/confirmatory_v3/selection/
+          name: t2-complete-realworld-taxonomy
+          path: artifacts/confirmatory_v3/taxonomy_manifest/
           if-no-files-found: error
           retention-days: 180

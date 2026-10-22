@@ -1,0 +1,129 @@
+name: T2 Confirmatory — frozen portfolio generalization
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  VALIDATION_RUN_ID: '39707832846'
+  T2_PORTFOLIO_ROOT: artifacts/confirmatory_portfolio
+
+jobs:
+  portfolio-manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - run: Rscript scripts/confirmatory_portfolio_generalization.R manifest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-portfolio-manifest
+          path: artifacts/confirmatory_portfolio/manifest/
+          if-no-files-found: error
+          retention-days: 180
+
+  portfolio-score:
+    needs: portfolio-manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        source_family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        target_family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        validation_seed: [21, 22, 23, 24, 25, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with: {name: t2-portfolio-manifest, path: artifacts/confirmatory_portfolio/manifest/}
+      - name: Restore archived target-family validation block
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: validation-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
+          TARGET_FAMILY: ${{ matrix.target_family }}
+          VALIDATION_SEED: ${{ matrix.validation_seed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${VALIDATION_RUN_ID}/artifacts?per_page=100" --jq ".artifacts[] | select(.name == env.ARTIFACT_NAME) | .id")
+          test -n "$artifact_id"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/validation.zip
+          unzip -q /tmp/validation.zip -d .
+          expected="artifacts/mc_canonical/v2_shared_base_crn/full/${TARGET_FAMILY}/seed${VALIDATION_SEED}"
+          if [[ ! -f "${expected}/n1000_r500.rds" ]]; then
+            candidate=$(find . -type f -path "*/seed${VALIDATION_SEED}/n1000_r500.rds" -print -quit)
+            test -n "$candidate"
+            mkdir -p "$(dirname "$expected")"
+            mv "$(dirname "$candidate")" "$expected"
+          fi
+          test -f "${expected}/n1000_r500.rds"
+      - run: Rscript scripts/confirmatory_portfolio_generalization.R score "${{ matrix.source_family }}" "${{ matrix.target_family }}" "${{ matrix.validation_seed }}" full
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t2-portfolio-score-${{ matrix.source_family }}-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
+          path: artifacts/confirmatory_portfolio/scores/${{ matrix.source_family }}/${{ matrix.target_family }}/
+          if-no-files-found: error
+          retention-days: 180
+
+  portfolio-inference:
+    needs: portfolio-score
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        source_family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        target_family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-portfolio-score-${{ matrix.source_family }}-${{ matrix.target_family }}-seed-*
+          merge-multiple: true
+          path: artifacts/confirmatory_portfolio/scores/${{ matrix.source_family }}/${{ matrix.target_family }}/
+      - uses: actions/download-artifact@v5
+        with: {name: t2-portfolio-manifest, path: artifacts/confirmatory_portfolio/manifest/}
+      - run: Rscript scripts/confirmatory_portfolio_generalization.R inference "${{ matrix.source_family }}" "${{ matrix.target_family }}" NA full
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-portfolio-inference-${{ matrix.source_family }}-${{ matrix.target_family }}
+          path: artifacts/confirmatory_portfolio/inference/${{ matrix.source_family }}/${{ matrix.target_family }}/
+          if-no-files-found: error
+          retention-days: 180
+
+  portfolio-report:
+    needs: portfolio-inference
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-portfolio-inference-*
+          merge-multiple: true
+          path: artifacts/confirmatory_portfolio/inference/
+      - run: Rscript scripts/confirmatory_portfolio_generalization.R report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-portfolio-generalization-report
+          path: artifacts/confirmatory_portfolio/report/
+          if-no-files-found: error
+          retention-days: 180

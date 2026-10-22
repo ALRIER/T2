@@ -1,0 +1,10 @@
+key,value,description
+protocol_id,T2_FROZEN_PORTFOLIO_GENERALIZATION_V1,Confirmatory-only frozen-weight portfolio generalization protocol
+validation_seed_indices,21:26,Independent canonical Monte Carlo seed blocks used for confirmation
+sample_n,1000,Canonical sample size used by retained validation artifacts
+replications,500,Canonical replication count used by retained validation artifacts
+training_partition_seed,42,Pre-existing deterministic scenario-partition seed; never selected from confirmation outcomes
+intrafamily_portfolio,heldout_partition,Same-family scenarios excluded from the deterministic training partition
+crossfamily_portfolio,heldout_partition,Target-family scenarios excluded from the deterministic training partition
+metrics,mse|q95,Metrics retained separately with paired block confidence intervals
+selection_policy,descriptive_taxonomy_then_competition,All source models and target regions are retained; winner labels summarize competition and never filter evaluation

@@ -1,0 +1,23 @@
+#!/usr/bin/env Rscript
+# Smoke contract: score a pre-existing canonical block without generating data or altering weights.
+root <- normalizePath('.', winslash='/', mustWork=TRUE)
+mc_root <- file.path(root, 'artifacts', 'zenodo_t2_confirmatory_backup_20261022', 'reconstructed', 'mc_canonical')
+if (!dir.exists(mc_root)) stop('Archived canonical Monte Carlo backup is required for this smoke test')
+Sys.setenv(T2_CANONICAL_MC_ROOT=mc_root,
+           T2_PORTFOLIO_ROOT=file.path(root, 'artifacts', 'ci', 'portfolio_generalization_smoke'))
+status <- system2('Rscript', c('scripts/confirmatory_portfolio_generalization.R', 'manifest'), stdout=TRUE, stderr=TRUE)
+if (!identical(attr(status,'status'), NULL) && !file.exists(file.path(Sys.getenv('T2_PORTFOLIO_ROOT'),'manifest','portfolio_manifest.csv'))) stop('Portfolio manifest smoke failed')
+status <- system2('Rscript', c('scripts/confirmatory_portfolio_generalization.R', 'score', 'normal', 'normal', '21', 'smoke'), stdout=TRUE, stderr=TRUE)
+if (!identical(attr(status,'status'), NULL) && !file.exists(file.path(Sys.getenv('T2_PORTFOLIO_ROOT'),'scores','normal','normal','seed21','scores.csv'))) stop('Portfolio score smoke failed')
+score <- read.csv(file.path(Sys.getenv('T2_PORTFOLIO_ROOT'),'scores','normal','normal','seed21','scores.csv'))
+stopifnot(nrow(score) == 3L * 32L, all(score$source_family == 'normal'), all(score$target_family == 'normal'), all(score$relation == 'intrafamily_unseen_portfolio'))
+status <- system2('Rscript', c('scripts/confirmatory_portfolio_generalization.R', 'inference', 'normal', 'normal', 'NA', 'smoke'), stdout=TRUE, stderr=TRUE)
+tax_path <- file.path(Sys.getenv('T2_PORTFOLIO_ROOT'),'inference','normal','normal','estimator_region_taxonomy.csv')
+engine_path <- file.path(Sys.getenv('T2_PORTFOLIO_ROOT'),'inference','normal','normal','engine_region_taxonomy.csv')
+win_path <- file.path(Sys.getenv('T2_PORTFOLIO_ROOT'),'inference','normal','normal','regional_winners.csv')
+if (!identical(attr(status,'status'), NULL) && (!file.exists(tax_path) || !file.exists(engine_path) || !file.exists(win_path))) stop('Portfolio inference smoke failed')
+tax <- read.csv(tax_path)
+stopifnot(nrow(tax) == 3L * 32L, all(c('mse_ci_low','q95_ci_high','evidence_taxonomy') %in% names(tax)))
+engine <- read.csv(engine_path)
+stopifnot(nrow(engine) == 3L * 4L, all(c('rate','scale','mechanism') %in% names(engine)))
+cat('PORTFOLIO GENERALIZATION SMOKE PASS\n')

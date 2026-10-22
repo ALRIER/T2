@@ -1,7 +1,7 @@
 key,value,description
-protocol_id,T2_CONFIRMATORY_V3_STRESS_SELECTION_V1,Immutable identifier for the reused archived confirmation layer
+protocol_id,T2_CONDITIONAL_TAXONOMY_V1,Immutable identifier for the reused archived conditional taxonomy layer
 validation_seed_indices,21:26,Locked independent Monte Carlo seed blocks used once for the combined MC and stress confirmation layer
-selection_unit,family_engine,One predeclared family-by-engine hypothesis per row
-selection_metrics,mse|q95,Both metrics require CI and BH-FDR confirmation in Monte Carlo and stress analyses
+analysis_unit,family_engine,One predeclared family-by-engine condition profile per row
+analysis_metrics,mse|q95,Each metric is assessed separately; their joint status is reported as a descriptive Pareto label and never used as an eligibility filter
 stress_role,robustness_analysis_of_locked_seed_blocks,Stress reuses seeds 21-26 and is not represented as a second independent held-out panel
-realworld_role,subsequent_independent_external_audit,Real-world scoring begins only after the candidate manifest produced by this protocol is frozen
+realworld_role,subsequent_independent_external_audit,Every locked family-engine profile is carried into real-world scoring regardless of its prior metric-specific evidence

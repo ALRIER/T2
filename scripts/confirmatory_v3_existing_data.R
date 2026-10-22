@@ -10,7 +10,7 @@ stage <- args[[1L]]
 family <- if (length(args) >= 2L) args[[2L]] else 'all'
 seed <- if (length(args) >= 3L) as.integer(args[[3L]]) else NA_integer_
 valid <- c('stress_score', 'stress_inference', 'realworld_score',
-           'realworld_inference', 'selection', 'report')
+           'realworld_inference', 'taxonomy_manifest', 'report')
 if (!stage %in% valid) stop('Unsupported stage: ', stage)
 
 source('R/00_shared/load_all.R'); t2_load('.')
@@ -188,15 +188,21 @@ joint_report <- function() {
                   list(layer_table(mc,'mc'), layer_table(st,'stress'), layer_table(rw,'realworld')))
   final$final_mse_confirmed <- final$mc_mse_confirmed & final$stress_mse_confirmed & final$realworld_mse_confirmed
   final$final_q95_confirmed <- final$mc_q95_confirmed & final$stress_q95_confirmed & final$realworld_q95_confirmed
-  final$final_both_confirmed <- final$final_mse_confirmed & final$final_q95_confirmed
+  final$final_pareto_confirmed <- final$final_mse_confirmed & final$final_q95_confirmed
+  final$evidence_taxonomy <- ifelse(final$final_pareto_confirmed, 'mse_and_q95',
+    ifelse(final$final_mse_confirmed, 'mse_only',
+      ifelse(final$final_q95_confirmed, 'q95_only', 'neither_metric')))
   root <- file.path(v3_root(),'report'); dir.create(root,recursive=TRUE,showWarnings=FALSE)
   t2_write_csv(final,file.path(root,'final_family_engine_summary.csv'))
-  t2_write_csv(final[final$final_both_confirmed,c('family','engine'),drop=FALSE],
-               file.path(root,'final_joint_confirmed_winners.csv'))
-  writeLines(c('# T2 confirmatory reuse report','',
+  t2_write_csv(final[, c('family','engine','evidence_taxonomy',
+                         'final_mse_confirmed','final_q95_confirmed','final_pareto_confirmed'), drop=FALSE],
+               file.path(root,'final_conditional_taxonomy.csv'))
+  writeLines(c('# T2 conditional taxonomy report','',
     paste0('- family-engine hypotheses: ',nrow(final)),
-    paste0('- joint MSE+q95 confirmations across Monte Carlo, stress and real-world: ',sum(final$final_both_confirmed)),
-    '', 'All three evidence layers are required for the joint-confirmed label.'),
+    paste0('- MSE evidence across all layers: ',sum(final$final_mse_confirmed)),
+    paste0('- q95 evidence across all layers: ',sum(final$final_q95_confirmed)),
+    paste0('- joint MSE+q95 Pareto labels across all layers: ',sum(final$final_pareto_confirmed)),
+    '', 'All locked family-engine profiles are reported. The joint label is descriptive and is not an eligibility criterion.'),
     file.path(root,'confirmatory_v3_report.md'))
   writeLines('confirmatory_v3_report COMPLETE',file.path(root,'report.status'))
   invisible(final)
@@ -205,9 +211,10 @@ joint_report <- function() {
 # This is deliberately separate from real-world scoring.  Seeds 21--26 form
 # one locked synthetic confirmation layer: stress is an adverse-condition
 # analysis of the same independent seed blocks, not a second independent
-# held-out panel.  The resulting manifest freezes the family/engine scope
-# before the external real-world workflow is dispatched.
-select_finalists <- function() {
+# held-out panel.  The manifest freezes the complete predeclared taxonomy
+# before the external real-world workflow is dispatched. It never excludes a
+# profile for lacking evidence on either metric.
+build_taxonomy_manifest <- function() {
   fams <- t2_families()
   mc <- do.call(rbind, lapply(fams, function(f) {
     p <- file.path(Sys.getenv('T2_MC_INFERENCE_ROOT', 'artifacts/confirmatory_v2/inference'),
@@ -220,37 +227,39 @@ select_finalists <- function() {
     if (!file.exists(p)) stop('Missing stress inference: ', p)
     read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
   }))
-  selection <- merge(layer_table(mc, 'mc'), layer_table(st, 'stress'),
+  taxonomy <- merge(layer_table(mc, 'mc'), layer_table(st, 'stress'),
                      by = c('key', 'family', 'engine'), all = FALSE)
-  if (nrow(selection) != length(fams) * 4L || anyDuplicated(selection$key))
-    stop('Expected one frozen selection row for every family/engine hypothesis')
-  selection$mc_stress_mse_confirmed <- selection$mc_mse_confirmed &
-    selection$stress_mse_confirmed
-  selection$mc_stress_q95_confirmed <- selection$mc_q95_confirmed &
-    selection$stress_q95_confirmed
-  selection$frozen_for_realworld <- selection$mc_stress_mse_confirmed &
-    selection$mc_stress_q95_confirmed
-  selection$selection_rule <- paste(
-    'locked MC seed blocks 21-26 plus stress robustness;',
-    'both MSE and q95 must satisfy CI and BH-FDR criteria in both analyses')
-  selection$selection_role <- ifelse(selection$frozen_for_realworld,
-                                     'primary_realworld_candidate',
-                                     'negative_control_or_not_selected')
-  root <- file.path(v3_root(), 'selection')
+  if (nrow(taxonomy) != length(fams) * 4L || anyDuplicated(taxonomy$key))
+    stop('Expected one locked taxonomy row for every family/engine profile')
+  taxonomy$mc_stress_mse_confirmed <- taxonomy$mc_mse_confirmed &
+    taxonomy$stress_mse_confirmed
+  taxonomy$mc_stress_q95_confirmed <- taxonomy$mc_q95_confirmed &
+    taxonomy$stress_q95_confirmed
+  taxonomy$mc_stress_pareto <- taxonomy$mc_stress_mse_confirmed &
+    taxonomy$mc_stress_q95_confirmed
+  taxonomy$prior_evidence_taxonomy <- ifelse(taxonomy$mc_stress_pareto, 'mse_and_q95',
+    ifelse(taxonomy$mc_stress_mse_confirmed, 'mse_only',
+      ifelse(taxonomy$mc_stress_q95_confirmed, 'q95_only', 'neither_metric')))
+  taxonomy$included_in_realworld <- TRUE
+  taxonomy$manifest_rule <- paste(
+    'all predeclared family-engine profiles are retained;',
+    'MSE and q95 evidence are recorded separately; the joint state is descriptive only')
+  root <- file.path(v3_root(), 'taxonomy_manifest')
   dir.create(root, recursive = TRUE, showWarnings = FALSE)
-  t2_write_csv(selection, file.path(root, 'frozen_family_engine_manifest.csv'))
-  t2_write_csv(selection[selection$frozen_for_realworld,
-                          c('family', 'engine', 'key', 'selection_rule'), drop = FALSE],
-               file.path(root, 'frozen_realworld_candidates.csv'))
-  writeLines(c('# T2 frozen real-world candidate manifest', '',
-    paste0('- hypotheses assessed: ', nrow(selection)),
-    paste0('- candidates frozen for independent real-world audit: ',
-           sum(selection$frozen_for_realworld)),
+  t2_write_csv(taxonomy, file.path(root, 'family_engine_taxonomy_manifest.csv'))
+  t2_write_csv(taxonomy[, c('family', 'engine', 'key', 'prior_evidence_taxonomy',
+                            'included_in_realworld', 'manifest_rule'), drop = FALSE],
+               file.path(root, 'realworld_evaluation_manifest.csv'))
+  writeLines(c('# T2 complete conditional taxonomy manifest', '',
+    paste0('- predeclared family-engine profiles: ', nrow(taxonomy)),
+    paste0('- profiles retained for independent real-world audit: ',
+           sum(taxonomy$included_in_realworld)),
     '- Seeds 21-26 are one locked synthetic confirmation panel.',
-    '- The real-world layer is not run or inspected by this selection stage.'),
-    file.path(root, 'selection_report.md'))
-  writeLines('confirmatory_v3_selection COMPLETE', file.path(root, 'selection.status'))
-  invisible(selection)
+    '- The real-world layer is not run or inspected by this manifest stage.',
+    '- A joint MSE+q95 result is a descriptive Pareto label, not a gate.'),
+    file.path(root, 'taxonomy_manifest_report.md'))
+  writeLines('confirmatory_v3_taxonomy_manifest COMPLETE', file.path(root, 'taxonomy_manifest.status'))
+  invisible(taxonomy)
 }
 
 if (stage == 'stress_score') {
@@ -264,8 +273,8 @@ if (stage == 'stress_score') {
   t2_confirmatory_realworld_score('full')
 } else if (stage == 'realworld_inference') {
   t2_confirmatory_realworld_inference('full')
-} else if (stage == 'selection') {
-  select_finalists()
+} else if (stage == 'taxonomy_manifest') {
+  build_taxonomy_manifest()
 } else if (stage == 'report') {
   joint_report()
 }
