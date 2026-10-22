@@ -1,0 +1,81 @@
+name: T2 Confirmatory V2 — canonical reuse
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/confirmatory-v2.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  frozen-confirmation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+        validation_seed: [21, 22, 23, 24, 25, 26]
+    env:
+      T2_CONFIRMATORY_ROOT: artifacts/confirmatory_v2
+      T2_MATRIX_FORMAT: rds
+      T2_MAX_FILE_MB: '25'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Restore canonical heldout and stress data
+        uses: actions/download-artifact@v5
+        with:
+          run-id: 39707832846
+          name: validation-${{ matrix.family }}-seed-${{ matrix.validation_seed }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.validation_seed }}
+      - name: Score frozen models without regenerating data
+        run: Rscript scripts/confirmatory_existing_data.R score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
+      - name: Publish primary confirmatory scores and raw paired errors
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: confirmatory-v2-${{ matrix.family }}-seed${{ matrix.validation_seed }}
+          path: artifacts/confirmatory_v2/score/${{ matrix.family }}/confirm_seed${{ matrix.validation_seed }}/
+          if-no-files-found: warn
+          retention-days: 30
+  inference:
+    needs: frozen-confirmation
+    if: needs.frozen-confirmation.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+    env:
+      T2_CONFIRMATORY_ROOT: artifacts/confirmatory_v2
+      T2_MATRIX_FORMAT: rds
+      T2_MAX_FILE_MB: '25'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.3'
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Restore frozen-model score files
+        uses: actions/download-artifact@v5
+        with:
+          pattern: confirmatory-v2-${{ matrix.family }}-seed*
+          merge-multiple: true
+          path: artifacts/confirmatory_v2/score/${{ matrix.family }}/
+      - run: Rscript scripts/confirmatory_existing_data.R inference "${{ matrix.family }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: confirmatory-v2-inference-${{ matrix.family }}
+          path: artifacts/confirmatory_v2/inference/${{ matrix.family }}/
+          if-no-files-found: error
+          retention-days: 90
