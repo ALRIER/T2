@@ -19,6 +19,25 @@ t2_check_runtime('.', strict = TRUE)
 if (!family %in% c(t2_families(), 'all')) stop('Invalid family: ', family)
 
 v3_root <- function() Sys.getenv('T2_CONFIRMATORY_V3_ROOT', unset = 'artifacts/confirmatory_v3')
+v3_protocol <- function(path = file.path('config', 'confirmatory_v3_protocol.csv')) {
+  if (!file.exists(path)) stop('Missing V3 protocol: ', path)
+  x <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  if (!all(c('key', 'value', 'description') %in% names(x)) || anyDuplicated(x$key))
+    stop('Invalid V3 protocol')
+  x
+}
+v3_value <- function(key, protocol = v3_protocol()) {
+  i <- match(key, protocol$key)
+  if (is.na(i)) stop('Missing V3 protocol key: ', key)
+  as.character(protocol$value[i])
+}
+v3_validation_seeds <- function(protocol = v3_protocol()) {
+  bits <- strsplit(v3_value('validation_seed_indices', protocol), ':', fixed = TRUE)[[1L]]
+  if (length(bits) != 2L) stop('V3 validation_seed_indices must be an inclusive range')
+  out <- seq.int(as.integer(bits[1L]), as.integer(bits[2L]))
+  if (!identical(out, 21:26)) stop('V3 protocol must use locked validation seeds 21:26')
+  out
+}
 stress_root <- function(fam = family, s = seed)
   file.path(v3_root(), 'stress', fam, sprintf('seed%02d', as.integer(s)))
 
@@ -73,7 +92,7 @@ score_stress <- function(fam, s) {
 }
 
 stress_inference <- function(fam) {
-  seeds <- 21:26; block_rows <- list(); stability <- list()
+  seeds <- v3_validation_seeds(); block_rows <- list(); stability <- list()
   for (s in seeds) {
     path <- file.path(stress_root(fam, s), 'raw_errors.rds')
     if (!file.exists(path)) stop('Missing stress score: ', path)
@@ -235,7 +254,8 @@ select_finalists <- function() {
 }
 
 if (stage == 'stress_score') {
-  if (!family %in% t2_families() || is.na(seed) || !seed %in% 21:26) stop('Expected FAMILY and seed 21..26')
+  if (!family %in% t2_families() || is.na(seed) || !seed %in% v3_validation_seeds())
+    stop('Expected FAMILY and a locked V3 validation seed')
   score_stress(family, seed)
 } else if (stage == 'stress_inference') {
   if (!family %in% t2_families()) stop('Expected family')
