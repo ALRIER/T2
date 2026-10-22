@@ -1,0 +1,9 @@
+order,module,scientific_role,seed_or_data_role,authoritative_entrypoint,workflow_or_source,output_contract
+00,environment,locked runtime and integrity checks,none,scripts/check_environment.R,config/runtime_requirements.csv,runtime PASS
+01,montecarlo_T,generate canonical 26-estimator component matrix T,seeds 00-07 discovery; seed 08 reserved,scripts/generate_canonical_mc.R,Zenodo 23543077 or canonical generator,canonical RDS plus checksum
+02,discovery_Wstar,search and freeze simplex weight vectors W*,eight discovery seeds and four engines,scripts/run_stage.R discovery,.github/workflows/smoke.yml or production workflow,frozen weight CSV and manifest
+03a,fresh_T_09_20,retain twelve fresh independent matrix blocks,12 independent archived streams,scripts/confirmatory_existing_data.R,retained confirmatory inputs,immutable T archive
+03b,heldout_stress_T_21_26,retain six independent confirmation blocks,6 independent validation seeds,scripts/confirmatory_v3_existing_data.R,retained Actions validation artifacts,immutable T archive
+04,validation_confirmation,score all frozen candidates without retraining,heldout stress portfolio and parent-level inference,scripts/confirmatory_portfolio_generalization.R,.github/workflows/confirmatory-portfolio-generalization.yml,taxonomy and FDR reports
+05,realworld_external,external profile audit using parent datasets,48 processed rows / 37 parents,scripts/run_legacy_realworld_confirmatory.R,.github/workflows/confirmatory-legacy-realworld.yml,parent-level taxonomy and FDR report
+06,final_synthesis,combine planned evidence layers,no new optimization,scripts/confirmatory_v3_existing_data.R,post-confirmation aggregation,final descriptive and tournament report
