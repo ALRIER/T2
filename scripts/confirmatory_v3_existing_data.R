@@ -55,7 +55,7 @@ load_canonical <- function(fam, s, n, reps) {
 
 score_stress <- function(fam, s) {
   n <- as.integer(Sys.getenv('T2_STRESS_SAMPLE_N', '1000'))
-  reps <- as.integer(Sys.getenv('T2_STRESS_REPS', '250'))
+  reps <- as.integer(Sys.getenv('T2_STRESS_REPS', '500'))
   x <- load_canonical(fam, s, n, reps)
   models <- t2_confirmatory_load_models(fam)
   root <- stress_root(fam, s); dir.create(root, recursive = TRUE, showWarnings = FALSE)

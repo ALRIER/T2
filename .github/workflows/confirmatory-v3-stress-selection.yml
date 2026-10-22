@@ -17,7 +17,8 @@ env:
   T2_MATRIX_FORMAT: rds
   T2_MAX_FILE_MB: '25'
   T2_STRESS_SAMPLE_N: '1000'
-  T2_STRESS_REPS: '250'
+  # Canonical validation blocks were generated with 500 replicates.
+  T2_STRESS_REPS: '500'
 
 jobs:
   archive-preflight:
