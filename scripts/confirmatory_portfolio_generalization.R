@@ -126,13 +126,12 @@ infer_portfolio <- function(source, target, mode) {
       benchmark_mse=mean(z$benchmark_mse), benchmark_q95=mean(z$benchmark_q95), n_blocks=nrow(z), stringsAsFactors=FALSE)
   }
   model_taxonomy <- do.call(rbind, lapply(split(by_seed, interaction(by_seed$scenario_id, by_seed$model_id, drop=TRUE)), summarize, unit='estimator'))
-  model_taxonomy$mse_q_value <- p.adjust(model_taxonomy$mse_p_value, 'BH')
-  model_taxonomy$q95_q_value <- p.adjust(model_taxonomy$q95_p_value, 'BH')
+  # Adjustment is deliberately deferred to the single aggregation job.  A
+  # source-target shard is not an FDR family.
+  model_taxonomy$mse_q_value <- NA_real_; model_taxonomy$q95_q_value <- NA_real_
   model_taxonomy$mse_gain_pct <- -100*model_taxonomy$mse_difference/pmax(model_taxonomy$benchmark_mse,1e-12)
   model_taxonomy$q95_gain_pct <- -100*model_taxonomy$q95_difference/pmax(model_taxonomy$benchmark_q95,1e-12)
-  model_taxonomy$mse_supported <- model_taxonomy$mse_difference < 0 & model_taxonomy$mse_ci_high < 0 & model_taxonomy$mse_q_value <= .05
-  model_taxonomy$q95_supported <- model_taxonomy$q95_difference < 0 & model_taxonomy$q95_ci_high < 0 & model_taxonomy$q95_q_value <= .05
-  model_taxonomy$evidence_taxonomy <- ifelse(model_taxonomy$mse_supported & model_taxonomy$q95_supported, 'mse_and_q95', ifelse(model_taxonomy$mse_supported,'mse_only',ifelse(model_taxonomy$q95_supported,'q95_only','neither_metric')))
+  model_taxonomy$mse_supported <- NA; model_taxonomy$q95_supported <- NA; model_taxonomy$evidence_taxonomy <- 'pending_global_fdr'
   # Engine summaries average the eight frozen estimators within each independent
   # validation seed; individual estimator results above are never discarded.
   engine_by_seed <- aggregate(cbind(mse_difference,q95_difference,benchmark_mse,benchmark_q95,mse,q95) ~
@@ -140,13 +139,10 @@ infer_portfolio <- function(source, target, mode) {
                               by_seed, mean)
   engine_by_seed$model_id <- engine_by_seed$engine; engine_by_seed$training_seed <- NA_integer_
   engine_taxonomy <- do.call(rbind, lapply(split(engine_by_seed, interaction(engine_by_seed$scenario_id, engine_by_seed$engine, drop=TRUE)), summarize, unit='engine'))
-  engine_taxonomy$mse_q_value <- p.adjust(engine_taxonomy$mse_p_value, 'BH')
-  engine_taxonomy$q95_q_value <- p.adjust(engine_taxonomy$q95_p_value, 'BH')
+  engine_taxonomy$mse_q_value <- NA_real_; engine_taxonomy$q95_q_value <- NA_real_
   engine_taxonomy$mse_gain_pct <- -100*engine_taxonomy$mse_difference/pmax(engine_taxonomy$benchmark_mse,1e-12)
   engine_taxonomy$q95_gain_pct <- -100*engine_taxonomy$q95_difference/pmax(engine_taxonomy$benchmark_q95,1e-12)
-  engine_taxonomy$mse_supported <- engine_taxonomy$mse_difference < 0 & engine_taxonomy$mse_ci_high < 0 & engine_taxonomy$mse_q_value <= .05
-  engine_taxonomy$q95_supported <- engine_taxonomy$q95_difference < 0 & engine_taxonomy$q95_ci_high < 0 & engine_taxonomy$q95_q_value <= .05
-  engine_taxonomy$evidence_taxonomy <- ifelse(engine_taxonomy$mse_supported & engine_taxonomy$q95_supported, 'mse_and_q95', ifelse(engine_taxonomy$mse_supported,'mse_only',ifelse(engine_taxonomy$q95_supported,'q95_only','neither_metric')))
+  engine_taxonomy$mse_supported <- NA; engine_taxonomy$q95_supported <- NA; engine_taxonomy$evidence_taxonomy <- 'pending_global_fdr'
   region <- read.csv(file.path(pg_root(), 'manifest', 'portfolio_manifest.csv'), stringsAsFactors=FALSE, check.names=FALSE)
   region <- region[region$source_family == source & region$target_family == target,
                    c('source_family','target_family','relation','scenario_id','rate','scale','mechanism'), drop=FALSE]
@@ -183,6 +179,16 @@ report_portfolio <- function() {
     stop('Portfolio report requires completed inference for every planned source-target pair')
   estimator <- do.call(rbind, lapply(estimator_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
   engine <- do.call(rbind, lapply(engine_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
+  # One declared multiplicity family per metric and analysis level across the
+  # complete source->target matrix—not 36 independent shard corrections.
+  classify <- function(z) {
+    z$mse_q_value <- p.adjust(z$mse_p_value, 'BH'); z$q95_q_value <- p.adjust(z$q95_p_value, 'BH')
+    z$mse_supported <- z$mse_difference < 0 & z$mse_ci_high < 0 & z$mse_q_value <= .05
+    z$q95_supported <- z$q95_difference < 0 & z$q95_ci_high < 0 & z$q95_q_value <= .05
+    z$evidence_taxonomy <- ifelse(z$mse_supported & z$q95_supported,'mse_and_q95',ifelse(z$mse_supported,'mse_only',ifelse(z$q95_supported,'q95_only','neither_metric')))
+    z
+  }
+  estimator <- classify(estimator); engine <- classify(engine)
   long_winners <- function(paths, label) do.call(rbind, lapply(paths, function(p) {
     z <- read.csv(p, stringsAsFactors=FALSE, check.names=FALSE)
     do.call(rbind, lapply(c('mse_winner','q95_winner','pareto_winner'), function(metric) {

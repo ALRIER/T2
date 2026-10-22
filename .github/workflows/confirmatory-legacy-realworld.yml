@@ -1,0 +1,72 @@
+name: T2 Confirmatory — legacy external battery
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  T2_CONFIRMATORY_ROOT: artifacts/confirmatory
+  T2_LEGACY_RW_REPS: '500'
+  T2_LEGACY_RW_SAMPLE_SIZES: '200|1000'
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    outputs:
+      datasets: ${{ steps.matrix.outputs.datasets }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import csv, json
+          with open('config/legacy_realworld_t2_manifest.csv', newline='') as f:
+              ids = [r['dataset_id'] for r in csv.DictReader(f)]
+          print('datasets=' + json.dumps({'dataset_id': ids}, separators=(',', ':')))
+          PY
+
+  score:
+    needs: manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.manifest.outputs.datasets) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Score one immutable parent-data shard
+        env:
+          T2_LEGACY_RW_DATASET_ID: ${{ matrix.dataset_id }}
+        run: Rscript scripts/run_legacy_realworld_confirmatory.R score full
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-legacy-rw-${{ matrix.dataset_id }}
+          path: artifacts/confirmatory/legacy_realworld/
+          if-no-files-found: error
+          retention-days: 180
+
+  inference:
+    needs: score
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: actions/download-artifact@v5
+        with: {pattern: t2-legacy-rw-*, path: artifacts/confirmatory/legacy_realworld/shards/}
+      - run: Rscript scripts/merge_legacy_realworld_shards.R
+      - run: Rscript scripts/run_legacy_realworld_confirmatory.R inference full
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-legacy-realworld-report
+          path: artifacts/confirmatory/legacy_realworld/
+          if-no-files-found: error
+          retention-days: 180
