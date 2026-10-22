@@ -55,6 +55,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_NAME: validation-${{ matrix.family }}-seed-${{ matrix.validation_seed }}
+          FAMILY: ${{ matrix.family }}
+          VALIDATION_SEED: ${{ matrix.validation_seed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -62,6 +64,15 @@ jobs:
           test -n "$artifact_id"
           gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/validation.zip
           unzip -q /tmp/validation.zip -d .
+          expected="artifacts/mc_canonical/v2_shared_base_crn/full/${FAMILY}/seed${VALIDATION_SEED}"
+          if [[ ! -f "${expected}/n1000_r500.rds" ]]; then
+            candidate=$(find . -type f -path "*/seed${VALIDATION_SEED}/n1000_r500.rds" -print -quit)
+            test -n "$candidate"
+            source_dir=$(dirname "$candidate")
+            mkdir -p "$(dirname "$expected")"
+            mv "$source_dir" "$expected"
+          fi
+          test -f "${expected}/n1000_r500.rds"
       - run: Rscript scripts/confirmatory_v3_existing_data.R stress_score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
       - uses: actions/upload-artifact@v4
         if: always()
