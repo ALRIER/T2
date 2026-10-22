@@ -46,7 +46,7 @@ def safe_extract(archive: Path, destination: Path) -> int:
 
 def parse_artifact(name: str) -> tuple[str, str | None, int | None]:
     patterns = (
-        (r"^extended-mc-(?P<family>[^-]+)-seed-(?P<seed>\d+)$", "mc"),
+        (r"^extended-mc-(?:repair-)?(?P<family>[^-]+)-seed-(?P<seed>\d+)$", "mc"),
         (r"^validation-(?P<family>[^-]+)-seed-(?P<seed>\d+)$", "validation"),
         (r"^confirmatory-v2-(?P<family>[^-]+)-seed(?P<seed>\d+)$", "score"),
         (r"^confirmatory-v2-inference-(?P<family>[^-]+)$", "inference"),
