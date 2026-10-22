@@ -99,7 +99,7 @@ def write_checksums(root: Path, files: list[Path]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mc-archive", type=Path, required=True)
+    parser.add_argument("--mc-archive", type=Path, action="append", required=True)
     parser.add_argument("--validation-archive", type=Path, required=True)
     parser.add_argument("--confirmatory-archive", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -121,7 +121,7 @@ def main() -> None:
     }
     seen: dict[str, set[str]] = {key: set() for key in expected}
 
-    archive_dirs = (args.mc_archive, args.validation_archive, args.confirmatory_archive)
+    archive_dirs = tuple(args.mc_archive) + (args.validation_archive, args.confirmatory_archive)
     for archive_dir in archive_dirs:
         for archive in sorted(archive_dir.glob("*.zip")):
             kind, family, seed = parse_artifact(archive.stem)
