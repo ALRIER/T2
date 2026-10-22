@@ -388,12 +388,30 @@ t2_confirmatory_realworld_score <- function(mode = 'full') {
   families <- t2_families()
   out_root <- t2_confirmatory_realworld_root()
   dir.create(file.path(out_root, 'raw_errors'), recursive = TRUE, showWarnings = FALSE)
+  bundle_path <- Sys.getenv('T2_REALWORLD_BUNDLE', unset = '')
+  bundle <- NULL
+  if (nzchar(bundle_path) && file.exists(bundle_path)) {
+    bundle <- t2_read_rds(bundle_path)
+    if (!identical(bundle$mode, mode) ||
+        !identical(as.integer(bundle$reps), as.integer(reps)) ||
+        !identical(as.integer(bundle$sample_sizes), as.integer(ns)) ||
+        !identical(as.character(bundle$manifest_sha256), as.character(tab$sha256)))
+      stop('Real-world prepared bundle provenance/configuration mismatch')
+    if (!identical(as.character(bundle$dataset_ids), as.character(tab$dataset_id)))
+      stop('Real-world prepared bundle dataset order mismatch')
+  }
   score_rows <- list(); raw_rows <- list()
   for (i in seq_len(nrow(tab))) {
     row <- tab[i, , drop = FALSE]
     data <- t2_realworld_load_vector(row)
-    prepared <- realworld_prepare(data$x, sample_sizes = ns, R = reps,
-                                   seed = t2_seed(paste('confirmatory_realworld', row$dataset_id), 9001L))
+    prepared <- if (is.null(bundle)) {
+      realworld_prepare(data$x, sample_sizes = ns, R = reps,
+                        seed = t2_seed(paste('confirmatory_realworld', row$dataset_id), 9001L))
+    } else {
+      bundle$prepared[[as.character(row$dataset_id)]]
+    }
+    if (is.null(prepared) || length(prepared) != length(ns))
+      stop('Real-world prepared bundle lacks sample sizes for ', row$dataset_id)
     entries <- list()
     for (fam in families) {
       models <- t2_confirmatory_load_models(fam, manifest)
