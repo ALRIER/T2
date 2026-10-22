@@ -47,22 +47,24 @@ jobs:
       - uses: actions/download-artifact@v5
         with: {name: t2-portfolio-manifest, path: artifacts/confirmatory_portfolio/manifest/}
       - name: Restore archived target-family validation block
+        uses: actions/download-artifact@v5
+        with:
+          name: validation-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
+          path: /tmp/validation-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.VALIDATION_RUN_ID }}
+      - name: Validate canonical validation block
         env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT_NAME: validation-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
           TARGET_FAMILY: ${{ matrix.target_family }}
           VALIDATION_SEED: ${{ matrix.validation_seed }}
         shell: bash
         run: |
           set -euo pipefail
-          artifact_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${VALIDATION_RUN_ID}/artifacts?per_page=100" --jq ".artifacts[] | select(.name == env.ARTIFACT_NAME) | .id")
-          test -n "$artifact_id"
-          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/validation.zip
-          unzip -q /tmp/validation.zip -d .
           expected="artifacts/mc_canonical/v2_shared_base_crn/full/${TARGET_FAMILY}/seed${VALIDATION_SEED}"
+          candidate=$(find /tmp/validation-artifact -type f -name 'n1000_r500.rds' -print -quit)
+          test -n "$candidate"
           if [[ ! -f "${expected}/n1000_r500.rds" ]]; then
-            candidate=$(find . -type f -path "*/seed${VALIDATION_SEED}/n1000_r500.rds" -print -quit)
-            test -n "$candidate"
             mkdir -p "$(dirname "$expected")"
             mv "$(dirname "$candidate")" "$expected"
           fi
