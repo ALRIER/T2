@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: confirmatory-v2-${{ matrix.family }}-seed${{ matrix.validation_seed }}
-          path: artifacts/confirmatory_v2/score/${{ matrix.family }}/confirm_seed${{ matrix.validation_seed }}/
+          path: artifacts/confirmatory_v2/score/${{ matrix.family }}/
           if-no-files-found: warn
           retention-days: 30
   inference:
