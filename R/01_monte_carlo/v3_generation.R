@@ -2,7 +2,7 @@
 # Disjoint parameter intervals prevent test-set reuse during development.
 t2_v3_design <- function(role,family,index,n,n_scenarios=120L) {
  stopifnot(role%in%c("discovery","heldout","stress"),
-           index%in%t2_seed_plan_v3[[role]],family%in%t2_families(),
+           index%in%t2_v3_indices(role),family%in%t2_families(),
            n_scenarios>=8L)
  boundaries<-switch(role,
    discovery=list(rate=c(.005,.20),mad=c(1.5,12),perturb=.15),
@@ -32,7 +32,7 @@ t2_v3_params <- function(role,family,index,n,strength) {
 t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
                            root="artifacts/mc_v3_real26") {
  if(!role%in%c("discovery","heldout","stress")||
-    !index%in%t2_seed_plan_v3[[role]])stop("Unassigned stage seed")
+    !index%in%t2_v3_indices(role))stop("Unassigned stage seed")
  allowed_n<-if(role=="discovery")1000L else c(200L,1000L,3000L)
  if(!(n%in%allowed_n))stop("Invalid stage sample size")
  if(R<2L||n_scenarios<8L)stop("Invalid simulation size")
