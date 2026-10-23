@@ -1,0 +1,20 @@
+name: "T2 v3 03 - Heldout and stress gate"
+on:
+  workflow_dispatch:
+    inputs:
+      discovery_run_id:
+        required: true
+        type: string
+        description: "Immutable complete discovery result run id"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-confirmation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Block confirmation until frozen discovery manifests are published
+        run: |
+          echo "Validation will require seeds 10-14 (heldout) and 15-19 (stress), n=200/1000/3000."
+          test -f artifacts/v3_confirmation_inputs_verified.json || { echo "Missing frozen confirmation and stress manifest; refusing to score"; exit 1; }
