@@ -5,6 +5,7 @@ on:
     paths: ['.github/workflows/portfolio-report-repair.yml']
   workflow_dispatch:
 permissions:
+  packages: read
   contents: read
   actions: read
 jobs:
@@ -15,12 +16,13 @@ jobs:
       T2_PORTFOLIO_ROOT: artifacts/confirmatory_portfolio
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Install statistical dependency
-        run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+        run: bash scripts/run_r_in_container.sh Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - name: Restore all 36 completed inference artifacts
         uses: actions/download-artifact@v5
         with:
@@ -37,7 +39,7 @@ jobs:
           n=$(find artifacts/confirmatory_portfolio/inference -name estimator_region_taxonomy.csv | wc -l)
           test "$n" -eq 36 || { echo "Expected 36 inference tables; received $n"; exit 1; }
       - name: Produce corrected final report
-        run: Rscript scripts/confirmatory_portfolio_generalization.R report
+        run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_portfolio_generalization.R report
       - name: Publish final report
         uses: actions/upload-artifact@v4
         if: always()
