@@ -41,7 +41,8 @@ cfg$mutation_rate<-as.numeric(if(is.null(params$mutation_rate))ga_config$mutatio
 cfg$crossover_probability<-as.numeric(if(is.null(params$crossover_probability))ga_config$crossover_probability else params$crossover_probability)
 stopifnot(cfg$population>=8L,cfg$generations>=1L,cfg$patience>=1L)
 # Disable checkpoint writes during trial search to avoid reusing states across configurations.
-trial_seed<-t2_seed(paste("hpo",engine,family,fold,seed,basename(params_path)),6001L)
+trial_seed<-t2_seed_for_v3("discovery",family,seed,1000L,scenario_id=-100L-fold,
+                                replicate=as.integer(sum(utf8ToInt(paste(engine,basename(params_path))))))
 res<-switch(engine,
  ga=ga_discover(training,cfg,seed=trial_seed,shard=NULL),
  nsga2=nsga_discover(training,cfg,seed=trial_seed,shard=NULL),
