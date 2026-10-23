@@ -39,13 +39,13 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
  design<-t2_v3_design(role,family,index,n,n_scenarios)
  params<-t2_v3_params(role,family,index,n,design$bounds$perturb)
  target<-analytic_mean_from_params(family,params)
- folder<-file.path(root,"v3_real26_seedplan20",role,family,
+ folder<-file.path(root,"v3_real26_seedplan20_foldisolated",role,family,
                   sprintf("seed%02d",index),sprintf("n%s_r%s",n,R))
  dir.create(folder,recursive=TRUE,showWarnings=FALSE)
  canonical<-file.path(folder,"canonical.rds")
  if(file.exists(canonical)) {
    z<-t2_read_rds(canonical)
-   if(!identical(z$protocol,"v3_real26_seedplan20")||
+   if(!identical(z$protocol,"v3_real26_seedplan20_foldisolated")||
       !identical(z$grid,design$grid)||
       !identical(z$component_names,ESTIMATOR_NAMES))stop("Incompatible checkpoint")
    return(z)
@@ -107,7 +107,7 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
    }
    sc[[i]]<-z
  }
- out<-list(protocol="v3_real26_seedplan20",role=role,family=family,
+ out<-list(protocol="v3_real26_seedplan20_foldisolated",role=role,family=family,
            seed_index=as.integer(index),n=as.integer(n),replications=as.integer(R),
            scenarios=sc,grid=design$grid,bounds=design$bounds,
            params=params,target=target,component_names=ESTIMATOR_NAMES)
