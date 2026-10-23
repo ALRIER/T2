@@ -30,9 +30,11 @@ valid_ids<-grid$scenario_id[fold_id==fold]
 stopifnot(!length(intersect(train_ids,valid_ids)),length(valid_ids)>0L,1L%in%train_ids)
 stopifnot(!any(grid$mechanism[grid$scenario_id%in%valid_ids] %in%
                grid$mechanism[grid$scenario_id%in%train_ids]))
-# Use precomputed discovery-only simulation streams; no confirmation/real world reads.
+# Regenerate discovery-only matrices under revised 26-column estimator schema.
+# Historical precomputed RDS blocks MUST NOT be reused: columns 4 and 5 changed meaning.
 replications<-as.integer(Sys.getenv("T2_HPO_REPS","500"))
-mc<-t2_canonical_mc("full",family,seed,1000L,replications)
+mc<-t2_make_scenarios("full",sprintf("hpo_library_v2_%s_seed%02d",family,seed),
+                      1000L,replications,family=family,seed_index=seed)
 training<-mc$scenarios[train_ids];validation<-mc$scenarios[valid_ids]
 cfg<-ga_config;cfg$population<-as.integer(params$population);cfg$generations<-as.integer(params$generations)
 cfg$patience<-as.integer(params$patience);cfg$improvement<-as.numeric(params$improvement)
