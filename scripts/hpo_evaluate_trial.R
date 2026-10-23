@@ -8,18 +8,28 @@ if(!family %in% c("normal","lognormal","weibull","invgauss","exgaussian","exwald
 if(!requireNamespace("jsonlite",quietly=TRUE))stop("Install jsonlite")
 params<-jsonlite::fromJSON(params_path,simplifyVector=TRUE)
 source("R/00_shared/load_all.R");t2_load(".");source("R/00_shared/pipeline.R")
-if(!fold %in% 1:5 || !seed %in% 0:7)stop("Invalid fold or seed")
-# Each scenario has exactly one fold. Clean scenario is always in fitting to retain four bands.
-# Severity groups are never divided across train and validation; reserve multiple rates by group.
+if(!fold %in% 1:3 || !seed %in% 0:7)stop("Invalid fold or seed")
+# Grouped 3-fold validation holds out complete contamination mechanisms.
+# All severity and contamination-rate variants of each mechanism are assigned together.
+# This prevents a search from seeing the same mechanism at a neighboring MAD value.
 grid<-build_contamination_grid(ga_config)
 stopifnot(nrow(grid)==361L)
-severity_group<-ifelse(is.na(grid$scale),0L,match(grid$scale,ga_config$mad_scales))
-rate_group<-ifelse(grid$rate==0,0L,match(grid$rate,ga_config$contamination_rates[-1]))
-mechanism_group<-match(grid$mechanism,ga_config$contamination_types);mechanism_group[is.na(mechanism_group)]<-0L
-fold_id<-ifelse(grid$rate==0,0L,((severity_group+2L*rate_group+3L*mechanism_group)%%5L)+1L)
+mechanism_folds<-list(
+  c("upper_tail","clustered_upper","point_mass"),
+  c("lower_tail","clustered_symmetric","mixture_bimodal_near"),
+  c("symmetric_t","mixture_bimodal_far")
+)
+stopifnot(setequal(unlist(mechanism_folds),ga_config$contamination_types),
+          !anyDuplicated(unlist(mechanism_folds)))
+fold_id<-integer(nrow(grid))
+for(j in seq_along(mechanism_folds))
+  fold_id[grid$mechanism %in% mechanism_folds[[j]]]<-j
+stopifnot(fold_id[grid$rate==0]==0L,all(fold_id[grid$rate>0]%in%1:3))
 train_ids<-grid$scenario_id[fold_id!=fold]
 valid_ids<-grid$scenario_id[fold_id==fold]
-stopifnot(length(intersect(train_ids,valid_ids))==0L,length(valid_ids)>0L,1L%in%train_ids)
+stopifnot(!length(intersect(train_ids,valid_ids)),length(valid_ids)>0L,1L%in%train_ids)
+stopifnot(!any(grid$mechanism[grid$scenario_id%in%valid_ids] %in%
+               grid$mechanism[grid$scenario_id%in%train_ids]))
 # Use precomputed discovery-only simulation streams; no confirmation/real world reads.
 replications<-as.integer(Sys.getenv("T2_HPO_REPS","500"))
 mc<-t2_canonical_mc("full",family,seed,1000L,replications)
@@ -43,7 +53,16 @@ w<-W[,index,drop=FALSE]
 stopifnot(abs(sum(w)-1)<1e-8)
 # Validate scenario means directly, without requiring each validation fold to contain every band.
 metrics<-t(vapply(validation,function(x)as.numeric(evaluate_weights(x$T,w,x$target)$objectives[1,]),numeric(2)))
+# Compare against the same parent sample mean reference for each validation scenario.
+refs<-t(vapply(validation,function(x){
+ e<-(x$T[,1L]-x$target)^2
+ c(mean(e),unname(quantile(e,.95,type=8)))
+},numeric(2)))
+ratios<-metrics/pmax(refs,1e-12)
 out<-list(engine=engine,family=family,fold=fold,seed=seed,
- mse=mean(metrics[,1]),q95=mean(metrics[,2]),n_validation_scenarios=length(validation),
+ mse=mean(metrics[,1]),q95=mean(metrics[,2]),
+ mse_ratio=mean(ratios[,1]),q95_ratio=mean(ratios[,2]),
+ n_validation_scenarios=length(validation),
+ heldout_mechanisms=mechanism_folds[[fold]],
  generations_ran=if(is.null(res$generations_ran))0 else res$generations_ran)
 cat(jsonlite::toJSON(out,auto_unbox=TRUE,digits=12),"\n")
