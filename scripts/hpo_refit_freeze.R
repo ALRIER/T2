@@ -22,7 +22,7 @@ outdir<-file.path("artifacts","hpo_v1","refit",family,engine)
 dir.create(outdir,recursive=TRUE,showWarnings=FALSE)
 n_random<-as.integer(Sys.getenv("T2_DR_SCENARIOS","120"))
 R<-as.integer(Sys.getenv("T2_DR_REPS","500"))
-for(seed in t2_seed_plan_v3$discovery){
+for(seed in t2_v3_indices('discovery')){
   # Refit on the same versioned V3 development distribution used by HPO;
   # heldout and stress streams are unreachable from this call.
   z<-t2_v3_generate('discovery',family,seed,1000L,R=R,n_scenarios=n_random)
