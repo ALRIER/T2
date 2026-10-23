@@ -110,8 +110,8 @@ ESTIMATOR_REGISTRY <- list(
   mean        = function(x) base::mean(x, na.rm = TRUE),
   median      = function(x) stats::median(x, na.rm = TRUE),
   trimmed20   = function(x) base::mean(x, trim = 0.20, na.rm = TRUE),
-  harmonic    = harmonic_mean_safe,
-  geometric   = geometric_mean_safe,
+  trimmed10   = function(x) base::mean(x, trim = 0.10, na.rm = TRUE),
+  winsorized_0.15 = function(x) winsorized_mean_safe(x, p = 0.15),
   mode_hsm    = mode_hsm_safe,
   mode_parzen = mode_parzen_safe,
   trimean     = trimean_safe,
@@ -169,16 +169,12 @@ admissible_estimator_mask <- function(distribution = NULL,
                                       target = "arithmetic_mean",
                                       strict_support = TRUE) {
   # A named TRUE/FALSE vector aligned with ESTIMATOR_NAMES.
-  # Harmonic and geometric means are blocked when the family can
-  # generate zero/negative values. Target-compatibility is recorded in metadata;
-  # stronger target penalties belong to the fitness layer.
+  # Revised T2 core registry consists entirely of real-support location estimators.
+  # Historical harmonic/geometric restrictions no longer apply to core weights.
   mask <- rep(TRUE, N_EST)
   names(mask) <- ESTIMATOR_NAMES
 
-  if (isTRUE(strict_support) && family_allows_nonpositive(distribution)) {
-    positive_only <- ESTIMATOR_METADATA$estimator[isTRUE(TRUE) & ESTIMATOR_METADATA$requires_positive]
-    mask[positive_only] <- FALSE
-  }
+  # Every registered core component is defined for mixed-sign finite samples.
 
   mask
 }
