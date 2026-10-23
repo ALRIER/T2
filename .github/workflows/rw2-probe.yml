@@ -1,0 +1,9 @@
+name: RW2 probe
+"on":
+  push:
+    paths: [.github/workflows/rw2-probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo rw2-probe-ok
