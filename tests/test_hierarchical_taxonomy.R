@@ -1,0 +1,19 @@
+#!/usr/bin/env Rscript
+source("R/05_audits/hierarchical_taxonomy.R")
+rows<-expand.grid(stage=c("heldout","stress","realworld"),
+ level="global",benchmark_id="mean",model_id=c("a","b"),stringsAsFactors=FALSE)
+rows$mse_difference<-ifelse(rows$model_id=="a",-1,1)
+rows$q95_difference<-ifelse(rows$model_id=="a",-2,2)
+rows$mse_p_value<-ifelse(rows$model_id=="a",.0001,.8)
+rows$q95_p_value<-ifelse(rows$model_id=="a",.0001,.8)
+rows$mse_ci_high<-ifelse(rows$model_id=="a",-.1,.1)
+rows$q95_ci_high<-ifelse(rows$model_id=="a",-.1,.1)
+z<-t2_taxonomy(rows)
+stopifnot(all(z$taxonomy[z$model_id=="a"]=="both_mse_q95_bh_fdr"),
+          all(z$taxonomy[z$model_id=="b"]=="no_supported_gain"))
+a<-t2_taxonomy_absolute(z)
+stopifnot(isTRUE(a$absolute_both[a$model_id=="a"]),
+          !a$absolute_both[a$model_id=="b"])
+incomplete<-t2_taxonomy_absolute(z[z$stage!="stress",])
+stopifnot(!any(incomplete$absolute_both))
+cat("HIERARCHICAL_TAXONOMY_CONTRACT_PASS\n")
