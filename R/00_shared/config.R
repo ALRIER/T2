@@ -27,10 +27,13 @@ t2_assert_seed_plan_v3 <- function(plan=t2_seed_plan_v3) {
 }
 t2_seed_for_v3 <- function(stage,family,index,n,scenario_id=0L,replicate=0L) {
  t2_assert_seed_plan_v3()
- stopifnot(stage %in% c("discovery","heldout","stress"),
-           family %in% c("normal","lognormal","weibull","invgauss","exgaussian","exwald"),
-           index %in% t2_seed_plan_v3[[stage]])
- v<-paste("t2_v3",stage,family,index,n,scenario_id,replicate,sep=":")
- a<-utf8ToInt(v)
- as.integer((sum(as.double(a)*seq_along(a)) %% 2147483646)+1)
+ if(!stage%in%c("discovery","heldout","stress")||
+    !family%in%c("normal","lognormal","weibull","invgauss","exgaussian","exwald")||
+    !index%in%t2_seed_plan_v3[[stage]]) stop("Seed role mismatch")
+ if(length(n)!=1L||!is.finite(n)||n<2L)stop("Invalid n")
+ # Polynomial rolling hash avoids collisions from simple weighted character sums.
+ bytes<-utf8ToInt(paste("v3_real26",stage,family,index,n,scenario_id,replicate,sep=":"))
+ h<-104729
+ for(b in bytes)h<-(h*131+as.double(b))%%2147483646
+ as.integer(h+1)
 }
