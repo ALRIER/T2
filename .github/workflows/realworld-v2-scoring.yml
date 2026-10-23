@@ -2,6 +2,9 @@ name: T2 Real-world V2 — frozen W-star scoring
 
 "on":
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/realworld-v2-scoring.yml
 
 permissions:
   contents: read
