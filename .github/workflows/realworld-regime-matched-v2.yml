@@ -1,0 +1,53 @@
+name: T2 Real-world V2 — outcome-blind catalog and profiling
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    outputs:
+      batches: ${{ steps.plan.outputs.batches }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - run: Rscript scripts/realworld_v2_catalog.R catalog
+      - id: plan
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import csv, json
+          with open('artifacts/realworld_regime_matched_v2/catalog.csv', newline='') as f:
+              batches = sorted({int(r['batch']) for r in csv.DictReader(f)})
+          print('batches=' + json.dumps({'batch': batches}, separators=(',', ':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw2-catalog
+          path: artifacts/realworld_regime_matched_v2/catalog.*
+          retention-days: 180
+
+  profile:
+    needs: catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix: ${{ fromJSON(needs.catalog.outputs.batches) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - uses: actions/download-artifact@v5
+        with: {name: rw2-catalog, path: artifacts/realworld_regime_matched_v2}
+      - run: Rscript scripts/realworld_v2_catalog.R profile ${{ matrix.batch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw2-profile-${{ matrix.batch }}
+          path: artifacts/realworld_regime_matched_v2/profile_batch_*
+          if-no-files-found: error
+          retention-days: 180

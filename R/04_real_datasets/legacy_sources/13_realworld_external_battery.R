@@ -23,7 +23,11 @@ eb_script_dir <- function(default = getwd()) {
                         winslash = "/", mustWork = FALSE))
 }
 
-source(file.path(eb_script_dir(), "realworld_external_battery_utils.R"), local = FALSE)
+# Permit the audited module to be imported by a later workflow without
+# re-resolving its helper relative to that workflow's command-line script.
+if (!exists("rw_cat", mode = "function", inherits = TRUE)) {
+  source(file.path(eb_script_dir(), "realworld_external_battery_utils.R"), local = FALSE)
+}
 
 eb_cat <- rw_cat
 
