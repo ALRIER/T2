@@ -4,7 +4,7 @@ ga_config <- list(
  contamination_rates=c(0,.01,.05,.10,.20,.30),
  mad_scales=c(1.5,3,4.5,6,9,12,15,20,30),
  contamination_types=c('upper_tail','lower_tail','symmetric_t','point_mass','clustered_upper','clustered_symmetric','mixture_bimodal_near','mixture_bimodal_far'),
- population=150L, generations=80L, seeds=9L,
+ population=150L, generations=80L, seeds=10L,
  training_seed_indices=0:9, heldout_seed_index=10L, bootstrap_B=500L,
  patience=10L, improvement=.001, training_fraction=.8, batch_size=32L,
  objective_names=c('mse','q95'), fdr_primary=.05, fdr_sensitivity=.10,
@@ -37,3 +37,17 @@ t2_seed_for_v3 <- function(stage,family,index,n,scenario_id=0L,replicate=0L) {
  for(b in bytes)h<-(h*131+as.double(b))%%2147483646
  as.integer(h+1)
 }
+
+# Prospective stage accessors. Legacy single-heldout-seed references must not be used in V3.
+t2_v3_indices <- function(stage) {
+ if(!stage %in% c("discovery","heldout","stress")) stop("Unknown V3 seed role")
+ as.integer(t2_seed_plan_v3[[stage]])
+}
+t2_v3_sample_sizes <- function(stage) {
+ if(identical(stage,"discovery"))return(as.integer(t2_seed_plan_v3$discovery_n))
+ if(stage %in% c("heldout","stress"))return(as.integer(t2_seed_plan_v3$validation_n))
+ if(identical(stage,"realworld"))return(as.integer(t2_seed_plan_v3$realworld_n))
+ stop("Unknown V3 stage")
+}
+t2_v3_candidate_roles <- function() c("both","mse","q95")
+t2_v3_expected_role_entries <- function() 6L*4L*length(t2_v3_indices("discovery"))*length(t2_v3_candidate_roles())
