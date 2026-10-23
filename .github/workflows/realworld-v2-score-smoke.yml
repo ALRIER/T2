@@ -2,6 +2,9 @@ name: T2 Real-world V2 — scoring smoke
 
 "on":
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/realworld-v2-score-smoke.yml
 
 permissions:
   contents: read
