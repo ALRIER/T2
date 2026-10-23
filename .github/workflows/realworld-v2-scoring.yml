@@ -18,7 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     outputs:
       batches: ${{ steps.matrix.outputs.batches }}
     steps:
@@ -51,7 +53,9 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.batches) }}
     container:
       image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v5
@@ -70,7 +74,9 @@ jobs:
     timeout-minutes: 180
     container:
       image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v5

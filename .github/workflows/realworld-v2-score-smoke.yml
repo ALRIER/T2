@@ -16,7 +16,9 @@ jobs:
     timeout-minutes: 60
     container:
       image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     env:
       RW2_ROOT: artifacts/realworld_regime_matched_v2/scoring
       RW2_DATA_ROOT: artifacts/realworld_regime_matched_v2/scoring/data/T2_rw2_external_catalog_664
