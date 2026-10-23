@@ -14,11 +14,6 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    container:
-      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     env:
       RW2_ROOT: artifacts/realworld_regime_matched_v2/scoring
       RW2_DATA_ROOT: artifacts/realworld_regime_matched_v2/scoring/data/T2_rw2_external_catalog_664
@@ -26,13 +21,18 @@ jobs:
       RW2_SAMPLE_SIZES: '200'
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           row=$(tail -n +2 config/realworld_v2_zenodo.csv); url=$(printf '%s' "$row" | cut -d, -f4); expected=$(printf '%s' "$row" | cut -d, -f5)
           mkdir -p "$RW2_ROOT/data"; curl -L --fail --retry 4 "$url" -o "$RW2_ROOT/catalog.tar"
           printf '%s  %s\n' "$expected" "$RW2_ROOT/catalog.tar" | sha256sum -c -
           tar -xf "$RW2_ROOT/catalog.tar" -C "$RW2_ROOT/data"
-      - run: Rscript scripts/realworld_v2_regime_scoring.R match
-      - run: Rscript scripts/realworld_v2_regime_scoring.R score 1
-      - run: Rscript -e "x<-readRDS(Sys.getenv('RW2_ROOT', 'artifacts/realworld_regime_matched_v2/scoring') |> file.path('scores_batch_001','scores.rds')); stopifnot(nrow(x)>0L, length(unique(x[['model_id']]))==192L)"
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT -e RW2_DATA_ROOT -e RW2_REPS -e RW2_SAMPLE_SIZES ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R match
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT -e RW2_DATA_ROOT -e RW2_REPS -e RW2_SAMPLE_SIZES ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R score 1
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript -e "x<-readRDS(file.path(Sys.getenv('RW2_ROOT'),'scores_batch_001','scores.rds')); stopifnot(nrow(x)>0L, length(unique(x[['model_id']]))==192L)"
       - uses: actions/upload-artifact@v4
         with: {name: rw2-scoring-smoke, path: artifacts/realworld_regime_matched_v2/scoring}
