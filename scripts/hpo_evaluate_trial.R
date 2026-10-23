@@ -8,33 +8,31 @@ if(!family %in% c("normal","lognormal","weibull","invgauss","exgaussian","exwald
 if(!requireNamespace("jsonlite",quietly=TRUE))stop("Install jsonlite")
 params<-jsonlite::fromJSON(params_path,simplifyVector=TRUE)
 source("R/00_shared/load_all.R");t2_load(".");source("R/00_shared/pipeline.R")
-if(!fold %in% 1:3 || !seed %in% 0:7)stop("Invalid fold or seed")
+if(!fold %in% 1:3 || !seed %in% 0:9)stop("Invalid fold or seed")
 # Grouped 3-fold validation holds out complete contamination mechanisms.
 # All severity and contamination-rate variants of each mechanism are assigned together.
 # This prevents a search from seeing the same mechanism at a neighboring MAD value.
-grid<-build_contamination_grid(ga_config)
-stopifnot(nrow(grid)==361L)
+source("R/01_monte_carlo/v3_generation.R")
+replications<-as.integer(Sys.getenv("T2_HPO_REPS","500"))
+n_scenarios<-as.integer(Sys.getenv("T2_V3_SCENARIOS","120"))
+mc<-t2_v3_generate("discovery",family,seed,1000L,
+                     R=replications,n_scenarios=n_scenarios)
+grid<-mc$grid
 mechanism_folds<-list(
-  c("upper_tail","clustered_upper","point_mass"),
-  c("lower_tail","clustered_symmetric","mixture_bimodal_near"),
-  c("symmetric_t","mixture_bimodal_far")
-)
+ c("upper_tail","clustered_upper","point_mass"),
+ c("lower_tail","clustered_symmetric","mixture_bimodal_near"),
+ c("symmetric_t","mixture_bimodal_far"))
 stopifnot(setequal(unlist(mechanism_folds),ga_config$contamination_types),
           !anyDuplicated(unlist(mechanism_folds)))
 fold_id<-integer(nrow(grid))
 for(j in seq_along(mechanism_folds))
-  fold_id[grid$mechanism %in% mechanism_folds[[j]]]<-j
-stopifnot(fold_id[grid$rate==0]==0L,all(fold_id[grid$rate>0]%in%1:3))
+ fold_id[grid$mechanism%in%mechanism_folds[[j]]]<-j
+stopifnot(all(fold_id[grid$rate>0]%in%1:3))
 train_ids<-grid$scenario_id[fold_id!=fold]
 valid_ids<-grid$scenario_id[fold_id==fold]
 stopifnot(!length(intersect(train_ids,valid_ids)),length(valid_ids)>0L,1L%in%train_ids)
 stopifnot(!any(grid$mechanism[grid$scenario_id%in%valid_ids] %in%
                grid$mechanism[grid$scenario_id%in%train_ids]))
-# Regenerate discovery-only matrices under revised 26-column estimator schema.
-# Historical precomputed RDS blocks MUST NOT be reused: columns 4 and 5 changed meaning.
-replications<-as.integer(Sys.getenv("T2_HPO_REPS","500"))
-mc<-t2_make_scenarios("full",sprintf("hpo_library_v2_%s_seed%02d",family,seed),
-                      1000L,replications,family=family,seed_index=seed)
 training<-mc$scenarios[train_ids];validation<-mc$scenarios[valid_ids]
 cfg<-ga_config;cfg$population<-as.integer(params$population);cfg$generations<-as.integer(params$generations)
 cfg$patience<-as.integer(params$patience);cfg$improvement<-as.numeric(params$improvement)
