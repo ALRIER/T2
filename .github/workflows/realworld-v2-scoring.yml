@@ -24,7 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
-        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Retrieve immutable external catalog
         run: |
           row=$(tail -n +2 config/realworld_v2_zenodo.csv)
@@ -54,7 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
-        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with: {name: rw2-prepared-catalog, path: artifacts/realworld_regime_matched_v2/scoring}
       - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT -e RW2_DATA_ROOT -e RW2_REPS -e RW2_SAMPLE_SIZES ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R score ${{ matrix.batch }}
@@ -72,7 +78,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
-        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with: {pattern: rw2-score-*, path: artifacts/realworld_regime_matched_v2/scoring, merge-multiple: true}
       - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R infer
