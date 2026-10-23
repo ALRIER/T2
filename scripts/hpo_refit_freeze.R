@@ -11,7 +11,7 @@ b<-jsonlite::fromJSON(best_path)
 if(!identical(b$status,"pilot_only_not_confirmatory"))stop("Unknown HPO provenance")
 if(!identical(b$family,family)||!identical(b$engine,engine))stop("HPO identity mismatch")
 source("R/00_shared/load_all.R");t2_load(".");source("R/00_shared/pipeline.R")
-source("R/02_discovery/domain_randomization.R")
+source("R/01_monte_carlo/v3_generation.R")
 source("R/02_discovery/three_candidate_selection.R")
 cfg<-ga_config;p<-b$best_params
 cfg$population<-as.integer(p$population);cfg$generations<-as.integer(p$generations)
@@ -23,8 +23,9 @@ dir.create(outdir,recursive=TRUE,showWarnings=FALSE)
 n_random<-as.integer(Sys.getenv("T2_DR_SCENARIOS","120"))
 R<-as.integer(Sys.getenv("T2_DR_REPS","500"))
 for(seed in t2_seed_plan_v3$discovery){
-  # Fresh training-only randomization in each refit seed; never sample from test suite.
-  z<-t2_dr_scenarios(family,seed,n=1000L,R=R,n_scenarios=n_random)
+  # Refit on the same versioned V3 development distribution used by HPO;
+  # heldout and stress streams are unreachable from this call.
+  z<-t2_v3_generate('discovery',family,seed,1000L,R=R,n_scenarios=n_random)
   search_seed<-t2_seed(paste("hpo_refit",family,engine,seed),25101L)
   d<-switch(engine,
     ga=ga_discover(z$scenarios,cfg,seed=search_seed,shard=NULL),
@@ -47,7 +48,7 @@ for(seed in t2_seed_plan_v3$discovery){
     write.csv(data.frame(component=ESTIMATOR_NAMES,weight=w),path,row.names=FALSE)
     saveRDS(list(model_id=id,role=role,status="candidate_unconfirmed",
        config=cfg,hyperparameters=p,discovery_seed=seed,
-       training_randomization=z$design,parent_parameters=z$params,
+       training_randomization=z$grid,parent_parameters=z$params,
        selected_objectives=O[index,],
        selection_rule="pareto_minima_and_normalized_ideal_distance_v1",
        protocol="experimental_hpo_refit_v2_not_confirmatory"),
