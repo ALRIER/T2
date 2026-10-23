@@ -1,6 +1,6 @@
 name: T2 Real-world V2 — scoring smoke
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:

@@ -1,6 +1,6 @@
 name: T2 Real-world V2 — frozen W-star scoring
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:
