@@ -9,7 +9,8 @@ args=(run --rm -v "$ROOT:/workspace" -w /workspace)
 # Forward declared experiment settings and nonsensitive Actions context.
 while IFS='=' read -r key _; do
   case "$key" in
-    T2_*|RW2_*|HG_*|EXTERNAL_*|SHARD|MODE|FAMILY|ENGINE|SEED|R_LIBS_USER|CI|GITHUB_SHA|GITHUB_RUN_ID)
+    *TOKEN*|*PASSWORD*|*SECRET*|*SSH_KEY*|*PRIVATE_KEY*) continue ;;
+    T2_*|RW2_*|HG_*|EXTERNAL_*|SHARD|MODE|FAMILY|ENGINE|SEED|R_LIBS_USER|CI|GITHUB_SHA|GITHUB_RUN_ID|OMP_NUM_THREADS|OPENBLAS_NUM_THREADS|MKL_NUM_THREADS)
       args+=(-e "$key") ;;
   esac
 done < <(env)
