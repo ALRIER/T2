@@ -16,6 +16,7 @@ on:
         type: string
 
 permissions:
+  packages: read
   contents: read
   actions: read
 
@@ -30,13 +31,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/run_confirmatory.R preflight ${{ inputs.mode }}
-      - run: Rscript tests/test_confirmatory_contract.R
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R preflight ${{ inputs.mode }}
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_confirmatory_contract.R
 
   confirmatory-smoke:
     needs: preflight
@@ -45,11 +46,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore prior smoke artifact
         if: inputs.resume_run_id != ''
         uses: actions/download-artifact@v5
@@ -58,11 +59,11 @@ jobs:
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/confirmatory/
-      - run: Rscript scripts/run_confirmatory.R montecarlo smoke exgaussian 9
-      - run: Rscript scripts/run_confirmatory.R score smoke exgaussian 9
-      - run: Rscript scripts/run_confirmatory.R inference smoke exgaussian
-      - run: Rscript scripts/run_confirmatory.R realworld_score smoke
-      - run: Rscript scripts/run_confirmatory.R realworld_inference smoke
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R montecarlo smoke exgaussian 9
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R score smoke exgaussian 9
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R inference smoke exgaussian
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R realworld_score smoke
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R realworld_inference smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -85,11 +86,11 @@ jobs:
         confirm_seed: [9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore prior shard artifact
         if: inputs.resume_run_id != ''
         uses: actions/download-artifact@v5
@@ -98,8 +99,8 @@ jobs:
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/confirmatory/
-      - run: Rscript scripts/run_confirmatory.R montecarlo full ${{ matrix.family }} ${{ matrix.confirm_seed }}
-      - run: Rscript scripts/run_confirmatory.R score full ${{ matrix.family }} ${{ matrix.confirm_seed }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R montecarlo full ${{ matrix.family }} ${{ matrix.confirm_seed }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R score full ${{ matrix.family }} ${{ matrix.confirm_seed }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -121,18 +122,18 @@ jobs:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore all confirmatory score artifacts
         uses: actions/download-artifact@v5
         with:
           pattern: confirmatory-*-seed*
           path: artifacts/confirmatory/
           merge-multiple: true
-      - run: Rscript scripts/run_confirmatory.R inference full ${{ matrix.family }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R inference full ${{ matrix.family }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -149,12 +150,12 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/run_confirmatory.R realworld_score full
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R realworld_score full
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -171,16 +172,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           name: confirmatory-realworld-score
           path: artifacts/confirmatory/realworld/
-      - run: Rscript scripts/run_confirmatory.R realworld_inference full
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R realworld_inference full
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -197,6 +198,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           name: confirmatory-inference-normal
@@ -225,12 +231,7 @@ jobs:
         with:
           name: confirmatory-realworld-inference
           path: artifacts/confirmatory/realworld/
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/run_confirmatory.R report full
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_confirmatory.R report full
       - uses: actions/upload-artifact@v4
         if: always()
         with:
