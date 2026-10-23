@@ -6,6 +6,7 @@ on:
     branches: [experiment/montecarlo-seeds-09-20]
 
 permissions:
+  packages: read
   contents: read
   actions: read
 
@@ -40,14 +41,14 @@ jobs:
       T2_BACKUP_LOCAL_DIR: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.family }}/seed${{ matrix.seed }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         with:
           ref: experiment/independent-validation-21-26
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/check_environment.R
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
       - name: Connect private backup network
         uses: tailscale/github-action@v4
         with:
@@ -69,7 +70,7 @@ jobs:
           nohup scripts/checkpoint_sync_loop.sh "validation-${{ matrix.family }}-${{ matrix.seed }}" > sync.log 2>&1 &
           echo $! > sync.pid
       - name: Generate reserved heldout and stress test data
-        run: Rscript tools/independent_validation_data.R "${{ matrix.family }}" "${{ matrix.seed }}"
+        run: bash scripts/run_r_in_container.sh Rscript tools/independent_validation_data.R "${{ matrix.family }}" "${{ matrix.seed }}"
       - name: Save independent validation datasets
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,21 +92,21 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         with:
           ref: experiment/independent-validation-21-26
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/check_environment.R
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
       - name: Prepare shared real-world data (not reseeded)
         env:
           T2_OUTPUT_ROOT: artifacts/ci
           T2_REALWORLD_REPS: '500'
           T2_REALWORLD_SAMPLE_SIZES: '200,1000,3000'
           T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
-        run: Rscript scripts/build_realworld_bundle.R full
+        run: bash scripts/run_r_in_container.sh Rscript scripts/build_realworld_bundle.R full
       - uses: actions/upload-artifact@v4
         with:
           name: independent-validation-realworld-input
