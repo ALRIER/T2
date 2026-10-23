@@ -1,0 +1,60 @@
+name: T2 Real-world V2 — recover catalog profiling
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: '39977711723'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      batches: ${{ steps.pending.outputs.batches }}
+    steps:
+      - id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, urllib.request
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/actions/runs/{os.environ['SOURCE_RUN_ID']}/artifacts?per_page=100",
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          completed = {int(m.group(1)) for a in json.load(urllib.request.urlopen(req))['artifacts']
+                       if (m := re.fullmatch(r'rw2-profile-(\d+)', a['name']))}
+          pending = [i for i in range(1, 78) if i not in completed]
+          print('batches=' + json.dumps({'batch': pending}, separators=(',', ':')))
+          PY
+
+  profile:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix: ${{ fromJSON(needs.plan.outputs.batches) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with: {r-version: '4.3.3', use-public-rspm: true}
+      - uses: actions/download-artifact@v5
+        with:
+          name: rw2-catalog
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/realworld_regime_matched_v2
+      - run: Rscript scripts/realworld_v2_catalog.R profile ${{ matrix.batch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw2-profile-recovered-${{ matrix.batch }}
+          path: artifacts/realworld_regime_matched_v2/profile_batch_*
+          if-no-files-found: error
+          retention-days: 180
