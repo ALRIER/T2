@@ -5,16 +5,20 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   catalog:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     outputs:
       batches: ${{ steps.plan.outputs.batches }}
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
       - run: Rscript scripts/realworld_v2_catalog.R catalog
       - id: plan
         run: |
@@ -33,6 +37,11 @@ jobs:
   profile:
     needs: catalog
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -40,8 +49,6 @@ jobs:
       matrix: ${{ fromJSON(needs.catalog.outputs.batches) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
       - uses: actions/download-artifact@v5
         with: {name: rw2-catalog, path: artifacts/realworld_regime_matched_v2}
       - run: Rscript scripts/realworld_v2_catalog.R profile ${{ matrix.batch }}
