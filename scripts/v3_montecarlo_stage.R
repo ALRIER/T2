@@ -23,3 +23,6 @@ mc<-t2_canonical_mc("full",family,index,n,replications)
 stopifnot(identical(mc$family,family),identical(as.integer(mc$n),n))
 cat(sprintf("GENERATED %s %s seed%02d n%d; archive: %s\n",
             role,family,index,n,t2_mc_path("full",family,index,n,replications)))
+
+# Publish an immutable contract alongside the Monte Carlo archive.
+t2_save_taxonomy_contract(file.path("artifacts","mc_v3_real26","taxonomy_contract.rds"))
