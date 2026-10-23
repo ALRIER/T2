@@ -9,3 +9,13 @@ for(f in c("normal","exwald")) {
 }
 stopifnot(identical(t2_seed_plan_v3$realworld_n,c(200L,1000L)))
 cat("V3_SEED_PLAN_CONTRACT_PASS\n")
+
+# V3 stage contract: ten discovery seeds, five confirmation, five stress.
+stopifnot(identical(t2_v3_indices("discovery"),0:9),
+          identical(t2_v3_indices("heldout"),10:14),
+          identical(t2_v3_indices("stress"),15:19),
+          identical(t2_v3_sample_sizes("discovery"),1000L),
+          identical(t2_v3_sample_sizes("heldout"),c(200L,1000L,3000L)),
+          identical(t2_v3_sample_sizes("stress"),c(200L,1000L,3000L)),
+          identical(t2_v3_sample_sizes("realworld"),c(200L,1000L)),
+          t2_v3_expected_role_entries()==720L)
