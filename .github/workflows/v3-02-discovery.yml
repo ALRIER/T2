@@ -1,0 +1,29 @@
+name: "T2 v3 02 - Discovery gate"
+on:
+  workflow_dispatch:
+    inputs:
+      montecarlo_run_id:
+        description: "Completed Monte Carlo run id with discovery-only seed archive"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  packages: read
+jobs:
+  verify-discovery-input:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ inputs.montecarlo_run_id }}
+          pattern: mc-v3-discovery-*
+          merge-multiple: true
+          path: artifacts/mc_v3_real26
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Refuse incomplete training archive
+        run: |
+          echo "Discovery requires all six families x 10 discovery seeds, each with n=1000."
+          echo "Single-seed Monte Carlo runs must be assembled into a complete, verified release first."
+          test -f artifacts/v3_discovery_inputs_verified.json || { echo "Missing frozen aggregated discovery manifest; refusing to train"; exit 1; }
