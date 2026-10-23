@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Experimental Optuna tuner for frozen Monte Carlo scenario folds.
+
+Does not modify the existing discovery or validation pipeline.
+Prerequisites: optuna, Rscript, jsonlite and canonical Monte Carlo archives.
+"""
+import argparse
+import json
+import pathlib
+import subprocess
+
+import optuna
+
+
+def suggest(trial, engine):
+    cfg = {
+        "population": trial.suggest_categorical("population", [50, 100, 150, 200]),
+        "generations": trial.suggest_int("generations", 20, 100, step=20),
+        "patience": trial.suggest_int("patience", 5, 20, step=5),
+        "improvement": trial.suggest_float("improvement", 1e-4, 1e-2, log=True),
+    }
+    if engine in ("ga", "nsga2"):
+        cfg["mutation_rate"] = trial.suggest_float("mutation_rate", 0.04, 0.4)
+        cfg["crossover_probability"] = trial.suggest_float("crossover_probability", 0.5, 0.98)
+    elif engine == "de":
+        cfg["F"] = trial.suggest_float("F", 0.25, 1.2)
+        cfg["CR"] = trial.suggest_float("CR", 0.35, 0.98)
+    elif engine == "dirichlet":
+        cfg["alpha"] = trial.suggest_float("alpha", 0.05, 10, log=True)
+        cfg["n_draws"] = trial.suggest_categorical("n_draws", [2000, 6000, 12000])
+    return cfg
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--engine", choices=["ga", "nsga2", "de", "dirichlet"], required=True)
+    p.add_argument("--family", choices=["normal", "lognormal", "weibull", "invgauss", "exgaussian", "exwald"], required=True)
+    p.add_argument("--trials", type=int, default=20)
+    p.add_argument("--folds", type=int, default=5)
+    p.add_argument("--seeds", default="0,1")
+    p.add_argument("--output", default="artifacts/hpo_v1")
+    args = p.parse_args()
+    if args.folds != 5:
+        p.error("HPO v1 currently implements five deterministic scenario folds.")
+    seeds = [int(s) for s in args.seeds.split(",")]
+    if not seeds or len(set(seeds)) != len(seeds) or not all(0 <= s <= 7 for s in seeds):
+        p.error("--seeds must be distinct discovery indices 0..7")
+    root = pathlib.Path(args.output) / args.family / args.engine
+    root.mkdir(parents=True, exist_ok=True)
+    storage = "sqlite:///" + str((root / "optuna.sqlite3").resolve())
+    study = optuna.create_study(
+        study_name=f"hpo_v1_{args.family}_{args.engine}",
+        storage=storage, direction="minimize", load_if_exists=True,
+        sampler=optuna.samplers.TPESampler(seed=314159),
+    )
+
+    def objective(trial):
+        params = suggest(trial, args.engine)
+        work = root / f"trial_{trial.number:05d}"
+        work.mkdir(parents=True, exist_ok=True)
+        params_file = work / "params.json"
+        params_file.write_text(json.dumps(params, indent=2), encoding="utf-8")
+        rows = []
+        for fold in range(1, 6):
+            for seed in seeds:
+                cmd = ["Rscript", "scripts/hpo_evaluate_trial.R",
+                       args.engine, args.family, str(params_file), str(fold), str(seed)]
+                proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+                (work / f"fold{fold}_seed{seed}.stdout").write_text(proc.stdout, encoding="utf-8")
+                (work / f"fold{fold}_seed{seed}.stderr").write_text(proc.stderr, encoding="utf-8")
+                if proc.returncode:
+                    raise RuntimeError(f"R evaluator error on fold={fold}, seed={seed}: {proc.stderr[-1200:]}")
+                rows.append(json.loads(proc.stdout.strip().splitlines()[-1]))
+        (work / "fold_metrics.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+        # Pilot scalar objective. A final, preregistered cross-fold metric
+        # and computational accounting are required before confirmatory use.
+        mse = sum(r["mse"] for r in rows) / len(rows)
+        q95 = sum(r["q95"] for r in rows) / len(rows)
+        trial.set_user_attr("fold_mse", mse)
+        trial.set_user_attr("fold_q95", q95)
+        return mse + q95
+
+    study.optimize(objective, n_trials=args.trials)
+    (root / "best_trial.json").write_text(json.dumps({
+        "engine": args.engine, "family": args.family,
+        "best_params": study.best_params, "pilot_score": study.best_value,
+        "status": "pilot_only_not_confirmatory",
+    }, indent=2), encoding="utf-8")
+    print(json.dumps({"best_value": study.best_value, "best_params": study.best_params}))
+
+
+if __name__ == "__main__":
+    main()
