@@ -13,16 +13,15 @@ if(!n %in% if(role=="discovery")1000L else c(200L,1000L,3000L))
 Sys.setenv(T2_CANONICAL_MC_ROOT="artifacts/mc_v3_real26")
 replications<-as.integer(Sys.getenv("T2_V3_REPS","500"))
 if(replications<2L)stop("At least two replications required")
-# The stage-specific shard ensures non-overlapping contamination streams.
-shard<-sprintf("v3_%s_%s_%02d_n%d",role,family,index,n)
-old<-t2_mc_version
-t2_mc_version<-function() "v3_real26_seedplan20"
-# Canonical generator uses role-separated directory and role-specific seed identifiers.
-# Avoid passing legacy seed streams to anything outside this stage.
-mc<-t2_canonical_mc("full",family,index,n,replications)
-stopifnot(identical(mc$family,family),identical(as.integer(mc$n),n))
-cat(sprintf("GENERATED %s %s seed%02d n%d; archive: %s\n",
-            role,family,index,n,t2_mc_path("full",family,index,n,replications)))
+# New implementation: role-scoped random streams and continuously sampled regimes.
+source("R/01_monte_carlo/v3_generation.R")
+n_scenarios<-as.integer(Sys.getenv("T2_V3_SCENARIOS","120"))
+mc<-t2_v3_generate(role,family,index,n,R=replications,n_scenarios=n_scenarios)
+stopifnot(identical(mc$role,role),identical(mc$protocol,"v3_real26_seedplan20"),
+          identical(mc$component_names,ESTIMATOR_NAMES),
+          nrow(mc$grid)==n_scenarios+1L)
+cat(sprintf("V3_GENERATED role=%s family=%s seed=%02d n=%d scenarios=%d\\n",
+ role,family,index,n,nrow(mc$grid)))
 
 # Publish an immutable contract alongside the Monte Carlo archive.
 t2_save_taxonomy_contract(file.path("artifacts","mc_v3_real26","taxonomy_contract.rds"))
