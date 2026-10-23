@@ -50,3 +50,30 @@ t2_taxonomy_absolute <- function(x, required_stages=c("heldout","stress","realwo
       stringsAsFactors=FALSE)
   }))
 }
+
+# Shared contract attached to every stage result. A version mismatch is fatal.
+t2_taxonomy_contract <- function() list(
+  schema="t2_taxonomy_v1",
+  levels=t2_taxonomy_levels(),
+  classifications=c("both_mse_q95_bh_fdr","mse_only_bh_fdr",
+                    "q95_only_bh_fdr","no_supported_gain"),
+  primary_benchmark="mean",
+  secondary_benchmarks=c("median","trimmed20","huber"),
+  alpha=.05,
+  metrics=c("mse","q95"),
+  adjustment="BH_by_stage_level_benchmark_separately_per_metric",
+  candidate_basis="frozen_weights",
+  discovery_evidence="development_only",
+  absolute_stages=c("heldout","stress","realworld"),
+  component_names=ESTIMATOR_NAMES
+)
+t2_verify_taxonomy_contract <- function(x) {
+  expected<-t2_taxonomy_contract()
+  if(!identical(x,expected)) stop("Taxonomy contract mismatch: refusing incompatible stage result")
+  invisible(TRUE)
+}
+t2_save_taxonomy_contract <- function(path) {
+  dir.create(dirname(path),recursive=TRUE,showWarnings=FALSE)
+  saveRDS(t2_taxonomy_contract(),path)
+  invisible(path)
+}
