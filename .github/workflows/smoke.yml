@@ -16,6 +16,7 @@ on:
         type: string
 
 permissions:
+  packages: read
   contents: read
   actions: read
 
@@ -26,24 +27,24 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/check_environment.R
-      - run: Rscript tests/test_checkpoint_contract.R
-      - run: Rscript tests/test_artifact_contract.R
-      - run: Rscript tests/test_artifact_size_contract.R
-      - run: Rscript tests/test_common_pipeline.R
-      - run: Rscript tests/test_smoke.R
-      - run: Rscript tests/test_v3_design.R
-      - run: Rscript tests/test_v4_integration.R
-      - run: Rscript tests/test_historical_mc_contract.R
-      - run: Rscript tests/test_engine_contract.R
-      - run: Rscript tests/test_realworld_contract.R
-      - run: Rscript tests/test_resume_contract.R
-      - run: Rscript tests/test_canonical_mc_contract.R
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_checkpoint_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_artifact_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_artifact_size_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_common_pipeline.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_smoke.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_v3_design.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_v4_integration.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_historical_mc_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_engine_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_realworld_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_resume_contract.R
+      - run: bash scripts/run_r_in_container.sh Rscript tests/test_canonical_mc_contract.R
 
   smoke:
     needs: preflight
@@ -67,12 +68,12 @@ jobs:
       T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/check_environment.R
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
       - name: Restore prior shard artifacts
         if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
         uses: actions/download-artifact@v5
@@ -82,7 +83,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/
       - name: Run datasets
-        run: Rscript scripts/run_stage.R datasets "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R datasets "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -92,7 +93,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run mc_validation
-        run: Rscript scripts/run_stage.R mc_validation "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R mc_validation "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -102,7 +103,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run montecarlo
-        run: Rscript scripts/run_stage.R montecarlo "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R montecarlo "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -112,7 +113,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run discovery
-        run: Rscript scripts/run_stage.R discovery "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R discovery "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -122,7 +123,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run heldout
-        run: Rscript scripts/run_stage.R heldout "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R heldout "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -132,7 +133,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run realworld
-        run: Rscript scripts/run_stage.R realworld "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R realworld "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -142,7 +143,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run stress
-        run: Rscript scripts/run_stage.R stress "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R stress "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -152,7 +153,7 @@ jobs:
           overwrite: true
           retention-days: 14
       - name: Run aggregate
-        run: Rscript scripts/run_stage.R aggregate "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R aggregate "$SHARD" smoke "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -175,6 +176,11 @@ jobs:
       T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore prior shared validation artifact
         if: inputs.resume_run_id != ''
         uses: actions/download-artifact@v5
@@ -183,14 +189,12 @@ jobs:
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/ci/shared/
-      - uses: r-lib/actions/setup-r@v2
         if: inputs.resume_run_id == ''
         with:
           r-version: '4.3.3'
           use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
         if: inputs.resume_run_id == ''
-      - run: Rscript scripts/check_environment.R
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
         if: inputs.resume_run_id == ''
       - name: Validate restored shared validation artifact
         if: inputs.resume_run_id != ''
@@ -203,13 +207,13 @@ jobs:
           echo "RESTORED SHARED VALIDATION PASS"
       - name: Build shared dataset certification
         if: inputs.resume_run_id == ''
-        run: Rscript scripts/run_stage.R datasets shared full normal 0 all
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R datasets shared full normal 0 all
       - name: Build shared Monte Carlo validation certification
         if: inputs.resume_run_id == ''
-        run: Rscript scripts/run_stage.R mc_validation shared full normal 0 all
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R mc_validation shared full normal 0 all
       - name: Build canonical prepared real-world bundle
         if: inputs.resume_run_id == ''
-        run: Rscript scripts/build_realworld_bundle.R full
+        run: bash scripts/run_r_in_container.sh Rscript scripts/build_realworld_bundle.R full
       - uses: actions/upload-artifact@v4
         with:
           name: shared-validation
@@ -231,6 +235,11 @@ jobs:
       T2_ZENODO_RECORD_ID: '23543077'
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore prior precomputed family artifact
         if: inputs.resume_run_id != ''
         uses: actions/download-artifact@v5
@@ -239,14 +248,12 @@ jobs:
           run-id: ${{ inputs.resume_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/mc_canonical/
-      - uses: r-lib/actions/setup-r@v2
         if: inputs.resume_run_id == ''
         with:
           r-version: '4.3.3'
           use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
         if: inputs.resume_run_id == ''
-      - run: Rscript scripts/check_environment.R
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
         if: inputs.resume_run_id == ''
       - name: Download public Monte Carlo package
         if: inputs.resume_run_id == ''
@@ -282,7 +289,7 @@ jobs:
         if: inputs.resume_run_id == ''
         env:
           FAMILY: ${{ matrix.family }}
-        run: Rscript scripts/verify_precomputed_mc.R artifacts/mc_canonical "$FAMILY"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/verify_precomputed_mc.R artifacts/mc_canonical "$FAMILY"
       - name: Validate restored family package
         if: inputs.resume_run_id != ''
         shell: bash
@@ -318,6 +325,11 @@ jobs:
       TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Require backup configuration
         shell: bash
         run: |
@@ -357,6 +369,11 @@ jobs:
       T2_MATRIX_FORMAT: rds
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore precomputed Monte Carlo family package from current run
         if: inputs.resume_run_id == ''
         uses: actions/download-artifact@v5
@@ -400,12 +417,7 @@ jobs:
           printf '%s\n' "$T2_BACKUP_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$T2_BACKUP_USER@$T2_BACKUP_HOST" true
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
-      - run: Rscript scripts/check_environment.R
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
       - name: Restore prior final shard artifact
         if: github.event_name == 'workflow_dispatch' && inputs.resume_run_id != ''
         continue-on-error: true
@@ -482,7 +494,7 @@ jobs:
           nohup scripts/checkpoint_sync_loop.sh "$SHARD" > checkpoint-sync.log 2>&1 &
           echo $! > checkpoint-sync.pid
       - name: Run montecarlo
-        run: Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R montecarlo "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -492,7 +504,7 @@ jobs:
           overwrite: true
           retention-days: 30
       - name: Run discovery
-        run: Rscript scripts/run_stage.R discovery "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R discovery "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -502,7 +514,7 @@ jobs:
           overwrite: true
           retention-days: 30
       - name: Run heldout
-        run: Rscript scripts/run_stage.R heldout "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R heldout "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -512,7 +524,7 @@ jobs:
           overwrite: true
           retention-days: 30
       - name: Run realworld
-        run: Rscript scripts/run_stage.R realworld "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R realworld "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -522,7 +534,7 @@ jobs:
           overwrite: true
           retention-days: 30
       - name: Run stress
-        run: Rscript scripts/run_stage.R stress "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R stress "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -532,7 +544,7 @@ jobs:
           overwrite: true
           retention-days: 30
       - name: Run aggregate
-        run: Rscript scripts/run_stage.R aggregate "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_stage.R aggregate "$SHARD" full "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.engine }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
