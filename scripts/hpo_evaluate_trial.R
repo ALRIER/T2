@@ -30,10 +30,11 @@ for(j in seq_along(mechanism_folds))
 stopifnot(all(fold_id[grid$rate>0]%in%1:3))
 train_ids<-grid$scenario_id[fold_id!=fold]
 valid_ids<-grid$scenario_id[fold_id==fold]
-stopifnot(!length(intersect(train_ids,valid_ids)),length(valid_ids)>0L,1L%in%train_ids)
+stopifnot(!length(intersect(train_ids,valid_ids)),length(valid_ids)>0L,0L%in%train_ids)
 stopifnot(!any(grid$mechanism[grid$scenario_id%in%valid_ids] %in%
                grid$mechanism[grid$scenario_id%in%train_ids]))
-training<-mc$scenarios[train_ids];validation<-mc$scenarios[valid_ids]
+training<-mc$scenarios[match(train_ids,grid$scenario_id)]
+validation<-mc$scenarios[match(valid_ids,grid$scenario_id)]
 cfg<-ga_config;cfg$population<-as.integer(params$population);cfg$generations<-as.integer(params$generations)
 cfg$patience<-as.integer(params$patience);cfg$improvement<-as.numeric(params$improvement)
 cfg$mutation_rate<-as.numeric(if(is.null(params$mutation_rate))ga_config$mutation_rate else params$mutation_rate)
