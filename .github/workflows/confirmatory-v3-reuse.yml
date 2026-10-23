@@ -9,6 +9,7 @@ on:
         type: string
 
 permissions:
+  packages: read
   contents: read
   actions: read
 
@@ -28,6 +29,11 @@ jobs:
       RECORD: ${{ inputs.zenodo_record_id }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify published backup manifest
         shell: bash
         run: |
@@ -58,11 +64,11 @@ jobs:
       RECORD: ${{ inputs.zenodo_record_id }}
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore validation data from Zenodo
         shell: bash
         run: |
@@ -76,7 +82,7 @@ jobs:
           actual=$(sha256sum "artifacts/zenodo_input/${file}" | awk '{print $1}')
           test -n "$expected" && test "$expected" = "$actual"
           tar -xf "artifacts/zenodo_input/${file}"
-      - run: Rscript scripts/confirmatory_v3_existing_data.R stress_score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R stress_score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -95,17 +101,17 @@ jobs:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           pattern: confirmatory-v3-stress-${{ matrix.family }}-seed-*
           merge-multiple: true
           path: artifacts/confirmatory_v3/stress/${{ matrix.family }}/
-      - run: Rscript scripts/confirmatory_v3_existing_data.R stress_inference "${{ matrix.family }}"
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R stress_inference "${{ matrix.family }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -123,11 +129,11 @@ jobs:
       T2_REALWORLD_BUNDLE: artifacts/ci/shared/realworld_bundle.rds
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore real-world prepared bundle from Zenodo
         shell: bash
         run: |
@@ -141,7 +147,7 @@ jobs:
           actual=$(sha256sum "artifacts/zenodo_input/${file}" | awk '{print $1}')
           test -n "$expected" && test "$expected" = "$actual"
           tar -xf "artifacts/zenodo_input/${file}"
-      - run: Rscript scripts/confirmatory_v3_existing_data.R realworld_score
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R realworld_score
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -156,16 +162,16 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           name: confirmatory-v3-realworld-score
           path: artifacts/confirmatory_v3/realworld/
-      - run: Rscript scripts/confirmatory_v3_existing_data.R realworld_inference
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R realworld_inference
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -183,11 +189,11 @@ jobs:
       RECORD: ${{ inputs.zenodo_record_id }}
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           pattern: confirmatory-v3-stress-inference-*
@@ -212,7 +218,7 @@ jobs:
             test -n "$expected" && test "$expected" = "$actual"
             tar -xf "artifacts/zenodo_input/${file}"
           done
-      - run: Rscript scripts/confirmatory_v3_existing_data.R report
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R report
       - uses: actions/upload-artifact@v4
         if: always()
         with:
