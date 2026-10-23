@@ -1,0 +1,60 @@
+name: T2 — harmonic-geometric support sensitivity
+
+on: {workflow_dispatch: {}}
+
+permissions: {contents: read, packages: read}
+
+env:
+  HG_ROOT: artifacts/hg_support_sensitivity
+  HG_DATA_ROOT: artifacts/hg_support_sensitivity/data/T2_rw2_external_catalog_664
+  HG_REPS: '500'
+  HG_SAMPLE_SIZES: '200|1000'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs: {batches: ${{ steps.matrix.outputs.batches }}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      - name: Retrieve immutable external catalog
+        run: |
+          row=$(tail -n +2 config/realworld_v2_zenodo.csv); url=$(printf '%s' "$row" | cut -d, -f4); expected=$(printf '%s' "$row" | cut -d, -f5)
+          mkdir -p "$HG_ROOT/data"; curl -L --fail --retry 4 "$url" -o "$HG_ROOT/catalog.tar"
+          printf '%s  %s\n' "$expected" "$HG_ROOT/catalog.tar" | sha256sum -c -; tar -xf "$HG_ROOT/catalog.tar" -C "$HG_ROOT/data"
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT -e HG_DATA_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R audit
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT -e HG_DATA_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R match
+      - id: matrix
+        run: echo 'batches={"batch":['$(seq -s, 1 67)']}' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: {name: hg-sensitivity-prepared, path: ${{ env.HG_ROOT }}, retention-days: 180}
+  score:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy: {fail-fast: false, max-parallel: 16, matrix: ${{ fromJSON(needs.prepare.outputs.batches) }}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      - uses: actions/download-artifact@v5
+        with: {name: hg-sensitivity-prepared, path: artifacts/hg_support_sensitivity}
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT -e HG_DATA_ROOT -e HG_REPS -e HG_SAMPLE_SIZES ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R score ${{ matrix.batch }}
+      - uses: actions/upload-artifact@v4
+        with: {name: hg-sensitivity-score-${{ matrix.batch }}, path: ${{ env.HG_ROOT }}/scores_batch_*, if-no-files-found: error, retention-days: 180}
+  inference:
+    needs: score
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      - uses: actions/download-artifact@v5
+        with: {pattern: hg-sensitivity-score-*, path: artifacts/hg_support_sensitivity, merge-multiple: true}
+      - uses: actions/download-artifact@v5
+        with: {name: hg-sensitivity-prepared, path: artifacts/hg_support_sensitivity}
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R infer
+      - uses: actions/upload-artifact@v4
+        with: {name: hg-support-sensitivity-report, path: ${{ env.HG_ROOT }}, retention-days: 180}

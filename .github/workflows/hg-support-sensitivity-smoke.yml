@@ -1,0 +1,31 @@
+name: T2 — harmonic-geometric sensitivity smoke
+
+on: {workflow_dispatch: {}}
+
+permissions: {contents: read, packages: read}
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HG_ROOT: artifacts/hg_support_sensitivity
+      HG_DATA_ROOT: artifacts/hg_support_sensitivity/data/T2_rw2_external_catalog_664
+      HG_REPS: '10'
+      HG_SAMPLE_SIZES: '200'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+      - name: Retrieve immutable external catalog
+        run: |
+          row=$(tail -n +2 config/realworld_v2_zenodo.csv); url=$(printf '%s' "$row" | cut -d, -f4); expected=$(printf '%s' "$row" | cut -d, -f5)
+          mkdir -p "$HG_ROOT/data"; curl -L --fail --retry 4 "$url" -o "$HG_ROOT/catalog.tar"
+          printf '%s  %s\n' "$expected" "$HG_ROOT/catalog.tar" | sha256sum -c -; tar -xf "$HG_ROOT/catalog.tar" -C "$HG_ROOT/data"
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT -e HG_DATA_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R audit
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT -e HG_DATA_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R match
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT -e HG_DATA_ROOT -e HG_REPS -e HG_SAMPLE_SIZES ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R score 1
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e HG_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/hg_support_sensitivity.R infer
+      - run: test -s "$HG_ROOT/frozen_weight_audit.csv" && test -s "$HG_ROOT/hg_support_sensitivity_taxonomy.csv" && test -s "$HG_ROOT/hg_support_exposure.csv"
+      - uses: actions/upload-artifact@v4
+        with: {name: hg-support-sensitivity-smoke, path: artifacts/hg_support_sensitivity, retention-days: 180}
