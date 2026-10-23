@@ -36,12 +36,12 @@ def main():
     p.add_argument("--engine", choices=["ga", "nsga2", "de", "dirichlet"], required=True)
     p.add_argument("--family", choices=["normal", "lognormal", "weibull", "invgauss", "exgaussian", "exwald"], required=True)
     p.add_argument("--trials", type=int, default=20)
-    p.add_argument("--folds", type=int, default=5)
+    p.add_argument("--folds", type=int, default=3)
     p.add_argument("--seeds", default="0,1")
     p.add_argument("--output", default="artifacts/hpo_v1")
     args = p.parse_args()
-    if args.folds != 5:
-        p.error("HPO v1 currently implements five deterministic scenario folds.")
+    if args.folds != 3:
+        p.error("HPO v1 currently implements three grouped contamination mechanism folds.")
     seeds = [int(s) for s in args.seeds.split(",")]
     if not seeds or len(set(seeds)) != len(seeds) or not all(0 <= s <= 7 for s in seeds):
         p.error("--seeds must be distinct discovery indices 0..7")
@@ -61,7 +61,7 @@ def main():
         params_file = work / "params.json"
         params_file.write_text(json.dumps(params, indent=2), encoding="utf-8")
         rows = []
-        for fold in range(1, 6):
+        for fold in range(1, 4):
             for seed in seeds:
                 cmd = ["bash", "scripts/run_r_in_container.sh", "Rscript", "scripts/hpo_evaluate_trial.R",
                        args.engine, args.family, str(params_file), str(fold), str(seed)]
@@ -74,8 +74,8 @@ def main():
         (work / "fold_metrics.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
         # Pilot scalar objective. A final, preregistered cross-fold metric
         # and computational accounting are required before confirmatory use.
-        mse = sum(r["mse"] for r in rows) / len(rows)
-        q95 = sum(r["q95"] for r in rows) / len(rows)
+        mse = sum(r["mse_ratio"] for r in rows) / len(rows)
+        q95 = sum(r["q95_ratio"] for r in rows) / len(rows)
         trial.set_user_attr("fold_mse", mse)
         trial.set_user_attr("fold_q95", q95)
         return mse + q95
@@ -85,6 +85,7 @@ def main():
         "engine": args.engine, "family": args.family,
         "best_params": study.best_params, "pilot_score": study.best_value,
         "status": "pilot_only_not_confirmatory",
+        "validation": "three grouped mechanism folds with two-metric mean-reference ratios",
     }, indent=2), encoding="utf-8")
     print(json.dumps({"best_value": study.best_value, "best_params": study.best_params}))
 
