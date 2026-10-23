@@ -26,7 +26,8 @@ for(seed in t2_seed_plan_v3$discovery){
   # Refit on the same versioned V3 development distribution used by HPO;
   # heldout and stress streams are unreachable from this call.
   z<-t2_v3_generate('discovery',family,seed,1000L,R=R,n_scenarios=n_random)
-  search_seed<-t2_seed(paste("hpo_refit",family,engine,seed),25101L)
+  search_seed<-t2_seed_for_v3("discovery",family,seed,1000L,scenario_id=-200L,
+                                 replicate=match(engine,c("ga","nsga2","de","dirichlet")))
   d<-switch(engine,
     ga=ga_discover(z$scenarios,cfg,seed=search_seed,shard=NULL),
     nsga2=nsga_discover(z$scenarios,cfg,seed=search_seed,shard=NULL),
