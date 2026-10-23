@@ -1,0 +1,83 @@
+name: T2 Real-world V2 — frozen W-star scoring
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  RW2_ROOT: artifacts/realworld_regime_matched_v2/scoring
+  RW2_DATA_ROOT: artifacts/realworld_regime_matched_v2/scoring/data/T2_rw2_external_catalog_664
+  RW2_REPS: '500'
+  RW2_SAMPLE_SIZES: '200|1000'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
+      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+    outputs:
+      batches: ${{ steps.matrix.outputs.batches }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve immutable external catalog
+        run: |
+          row=$(tail -n +2 config/realworld_v2_zenodo.csv)
+          url=$(printf '%s' "$row" | cut -d, -f4)
+          expected=$(printf '%s' "$row" | cut -d, -f5)
+          mkdir -p "$RW2_ROOT/data"
+          curl -L --fail --retry 4 "$url" -o "$RW2_ROOT/catalog.tar"
+          printf '%s  %s\n' "$expected" "$RW2_ROOT/catalog.tar" | sha256sum -c -
+          tar -xf "$RW2_ROOT/catalog.tar" -C "$RW2_ROOT/data"
+      - run: Rscript scripts/realworld_v2_regime_scoring.R match
+      - id: matrix
+        run: echo 'batches={"batch":['$(seq -s, 1 67)']}' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw2-prepared-catalog
+          path: ${{ env.RW2_ROOT }}
+          retention-days: 180
+
+  score:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix: ${{ fromJSON(needs.prepare.outputs.batches) }}
+    container:
+      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
+      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with: {name: rw2-prepared-catalog, path: artifacts/realworld_regime_matched_v2/scoring}
+      - run: Rscript scripts/realworld_v2_regime_scoring.R score ${{ matrix.batch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw2-score-${{ matrix.batch }}
+          path: ${{ env.RW2_ROOT }}/scores_batch_*
+          if-no-files-found: error
+          retention-days: 180
+
+  inference:
+    needs: score
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    container:
+      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
+      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with: {pattern: rw2-score-*, path: artifacts/realworld_regime_matched_v2/scoring, merge-multiple: true}
+      - run: Rscript scripts/realworld_v2_regime_scoring.R infer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rw2-realworld-v2-report
+          path: ${{ env.RW2_ROOT }}
+          retention-days: 180
