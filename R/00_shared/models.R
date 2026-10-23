@@ -38,9 +38,8 @@ component_vector <- function(x) {
   out['mean']<-mean(x)
   out['median']<-stats::median(x)
   out['trimmed20']<-mean(x,trim=.20)
-  xp<-x[x>0]
-  out['harmonic']<-if(length(xp))length(xp)/sum(1/xp) else out['median']
-  out['geometric']<-if(length(xp))exp(mean(log(xp))) else out['median']
+  # Revised core library: every component consumes the complete real-valued sample.
+  out['trimmed10']<-mean(x,trim=.10)
   q<-stats::quantile(x,probs=c(.05,.10,.20,.25,.50,.75,.80,.90,.95),
                      names=FALSE,type=8,na.rm=TRUE)
   out['trimean']<-(q[4L]+2*q[5L]+q[6L])/4
