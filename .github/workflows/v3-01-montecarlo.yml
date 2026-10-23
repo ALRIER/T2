@@ -42,6 +42,7 @@ jobs:
         run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
       - name: Validate new V3 seed roles and role-isolated generator
         run: |
+          bash scripts/run_r_in_container.sh Rscript tests/test_v3_no_legacy_calls.R
           bash scripts/run_r_in_container.sh Rscript tests/test_v3_seed_plan.R
           bash scripts/run_r_in_container.sh Rscript tests/test_revised_estimator_library.R
           bash scripts/run_r_in_container.sh Rscript tests/test_v3_generator_contract.R
