@@ -63,7 +63,7 @@ def main():
         rows = []
         for fold in range(1, 6):
             for seed in seeds:
-                cmd = ["Rscript", "scripts/hpo_evaluate_trial.R",
+                cmd = ["bash", "scripts/run_r_in_container.sh", "Rscript", "scripts/hpo_evaluate_trial.R",
                        args.engine, args.family, str(params_file), str(fold), str(seed)]
                 proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
                 (work / f"fold{fold}_seed{seed}.stdout").write_text(proc.stdout, encoding="utf-8")
