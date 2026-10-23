@@ -44,14 +44,14 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
  dir.create(folder,recursive=TRUE,showWarnings=FALSE)
  canonical<-file.path(folder,"canonical.rds")
  if(file.exists(canonical)) {
-   z<-readRDS(canonical)
+   z<-t2_read_rds(canonical)
    if(!identical(z$protocol,"v3_real26_seedplan20")||
       !identical(z$grid,design$grid)||
       !identical(z$component_names,ESTIMATOR_NAMES))stop("Incompatible checkpoint")
    return(z)
  }
  base_file<-file.path(folder,"base_samples.rds")
- if(file.exists(base_file))base<-readRDS(base_file) else {
+ if(file.exists(base_file))base<-t2_read_rds(base_file) else {
    set.seed(t2_seed_for_v3(role,family,index,n,-3L))
    base<-vapply(seq_len(R),function(k)generate_population(family,n,params),numeric(n))
    t2_atomic_save(base,base_file)
@@ -62,7 +62,7 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
    row<-design$grid[i,,drop=FALSE]
    piece<-file.path(folder,sprintf("scenario_%04d.rds",row$scenario_id))
    if(file.exists(piece)) {
-     z<-readRDS(piece)
+     z<-t2_read_rds(piece)
      if(!identical(z$component_names,ESTIMATOR_NAMES)||
         !identical(z$scenario_id,row$scenario_id)||
         !identical(z$rate,row$rate)||!identical(z$scale,row$scale)||
