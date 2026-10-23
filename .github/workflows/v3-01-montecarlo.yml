@@ -40,6 +40,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Validate stage environment
         run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
+      - name: Validate new V3 seed roles and role-isolated generator
+        run: |
+          bash scripts/run_r_in_container.sh Rscript tests/test_v3_seed_plan.R
+          bash scripts/run_r_in_container.sh Rscript tests/test_revised_estimator_library.R
+          bash scripts/run_r_in_container.sh Rscript tests/test_v3_generator_contract.R
       - name: Generate one immutable seed and sample size partition
         run: bash scripts/run_r_in_container.sh Rscript scripts/v3_montecarlo_stage.R "${{ inputs.role }}" "${{ inputs.family }}" "${{ inputs.seed }}" "${{ inputs.sample_n }}"
       - uses: actions/upload-artifact@v4
