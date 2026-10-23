@@ -120,8 +120,10 @@ if (stage == 'audit') {
     o <- block_test(z,'original'); a <- block_test(z,'ablated')
     dm <- t2_confirmatory_block_test(z$original_minus_ablated_mse,t2_confirmatory_bootstrap_B('full'),t2_seed(paste(z$model_id[1],'delta_mse'),19003L))
     dq <- t2_confirmatory_block_test(z$original_minus_ablated_q95,t2_confirmatory_bootstrap_B('full'),t2_seed(paste(z$model_id[1],'delta_q95'),19004L))
-    data.frame(source_family=z$source_family[1],proximity_layer=z$proximity_layer[1],model_id=z$model_id[1],engine=z$engine[1],n_parent=nrow(z),
-      t(o),t(a), delta_mse=unname(dm['difference']),delta_mse_ci_high=unname(dm['ci_high']),delta_mse_p_value=unname(dm['p_value']),
+    data.frame(source_family=z$source_family[1], proximity_layer=z$proximity_layer[1], model_id=z$model_id[1], engine=z$engine[1], n_parent=nrow(z),
+      as.data.frame(as.list(setNames(o, paste0('original_', names(o))))),
+      as.data.frame(as.list(setNames(a, paste0('ablated_', names(a))))),
+      delta_mse=unname(dm['difference']),delta_mse_ci_high=unname(dm['ci_high']),delta_mse_p_value=unname(dm['p_value']),
       delta_q95=unname(dq['difference']),delta_q95_ci_high=unname(dq['ci_high']),delta_q95_p_value=unname(dq['p_value']),
       benchmark_mse=mean(z$benchmark_mse),benchmark_q95=mean(z$benchmark_q95),check.names=FALSE)
   }))
