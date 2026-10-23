@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  packages: read
   contents: read
 
 env:
@@ -18,6 +19,11 @@ jobs:
       datasets: ${{ steps.matrix.outputs.datasets }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - id: matrix
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
@@ -37,13 +43,15 @@ jobs:
       matrix: ${{ fromJSON(needs.manifest.outputs.datasets) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Score one immutable parent-data shard
         env:
           T2_LEGACY_RW_DATASET_ID: ${{ matrix.dataset_id }}
-        run: Rscript scripts/run_legacy_realworld_confirmatory.R score full
+        run: bash scripts/run_r_in_container.sh Rscript scripts/run_legacy_realworld_confirmatory.R score full
       - uses: actions/upload-artifact@v4
         with:
           name: t2-legacy-rw-${{ matrix.dataset_id }}
@@ -57,13 +65,15 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with: {pattern: t2-legacy-rw-*, path: artifacts/confirmatory/legacy_realworld/shards/}
-      - run: Rscript scripts/merge_legacy_realworld_shards.R
-      - run: Rscript scripts/run_legacy_realworld_confirmatory.R inference full
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/merge_legacy_realworld_shards.R
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/run_legacy_realworld_confirmatory.R inference full
       - uses: actions/upload-artifact@v4
         with:
           name: t2-legacy-realworld-report
