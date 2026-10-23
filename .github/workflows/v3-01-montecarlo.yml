@@ -1,0 +1,51 @@
+name: "T2 v3 01 - Monte Carlo"
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: "Seed partition to generate"
+        required: true
+        type: choice
+        options: [discovery, heldout, stress]
+      family:
+        description: "Distribution"
+        required: true
+        type: choice
+        options: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
+      seed:
+        description: "Role-assigned seed index (discovery 0-9, heldout 10-14, stress 15-19)"
+        required: true
+        type: string
+      sample_n:
+        description: "1000 for discovery; 200/1000/3000 for heldout and stress"
+        required: true
+        type: choice
+        options: ["200", "1000", "3000"]
+permissions:
+  contents: read
+  packages: read
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      T2_V3_REPS: "500"
+      T2_MC_WORKERS: "2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate stage environment
+        run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
+      - name: Generate one immutable seed and sample size partition
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_montecarlo_stage.R "${{ inputs.role }}" "${{ inputs.family }}" "${{ inputs.seed }}" "${{ inputs.sample_n }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mc-v3-${{ inputs.role }}-${{ inputs.family }}-seed${{ inputs.seed }}-n${{ inputs.sample_n }}
+          path: artifacts/mc_v3_real26/
+          retention-days: 90
+          if-no-files-found: error
