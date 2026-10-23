@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  packages: read
   contents: read
   actions: read
 
@@ -46,11 +47,11 @@ jobs:
         validation_seed: [21, 22, 23, 24, 25, 26]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore locked validation artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -73,7 +74,7 @@ jobs:
             mv "$source_dir" "$expected"
           fi
           test -f "${expected}/n1000_r500.rds"
-      - run: Rscript scripts/confirmatory_v3_existing_data.R stress_score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R stress_score "${{ matrix.family }}" "${{ matrix.validation_seed }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -92,17 +93,17 @@ jobs:
         family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           pattern: confirmatory-v3-stress-${{ matrix.family }}-seed-*
           merge-multiple: true
           path: artifacts/confirmatory_v3/stress/${{ matrix.family }}/
-      - run: Rscript scripts/confirmatory_v3_existing_data.R stress_inference "${{ matrix.family }}"
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R stress_inference "${{ matrix.family }}"
       - uses: actions/upload-artifact@v4
         with:
           name: confirmatory-v3-stress-inference-${{ matrix.family }}
@@ -116,11 +117,11 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
+      - uses: docker/login-action@v3
         with:
-          r-version: '4.3.3'
-          use-public-rspm: true
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
           pattern: confirmatory-v3-stress-inference-*
@@ -139,7 +140,7 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "/tmp/${artifact}.zip"
             unzip -q "/tmp/${artifact}.zip" -d .
           done
-      - run: Rscript scripts/confirmatory_v3_existing_data.R taxonomy_manifest
+      - run: bash scripts/run_r_in_container.sh Rscript scripts/confirmatory_v3_existing_data.R taxonomy_manifest
       - uses: actions/upload-artifact@v4
         with:
           name: t2-complete-realworld-taxonomy
