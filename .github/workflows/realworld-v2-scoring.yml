@@ -16,15 +16,12 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     outputs:
       batches: ${{ steps.matrix.outputs.batches }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
       - name: Retrieve immutable external catalog
         run: |
           row=$(tail -n +2 config/realworld_v2_zenodo.csv)
@@ -34,7 +31,7 @@ jobs:
           curl -L --fail --retry 4 "$url" -o "$RW2_ROOT/catalog.tar"
           printf '%s  %s\n' "$expected" "$RW2_ROOT/catalog.tar" | sha256sum -c -
           tar -xf "$RW2_ROOT/catalog.tar" -C "$RW2_ROOT/data"
-      - run: Rscript scripts/realworld_v2_regime_scoring.R match
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT -e RW2_DATA_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R match
       - id: matrix
         run: echo 'batches={"batch":['$(seq -s, 1 67)']}' >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
@@ -51,16 +48,13 @@ jobs:
       fail-fast: false
       max-parallel: 16
       matrix: ${{ fromJSON(needs.prepare.outputs.batches) }}
-    container:
-      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
       - uses: actions/download-artifact@v5
         with: {name: rw2-prepared-catalog, path: artifacts/realworld_regime_matched_v2/scoring}
-      - run: Rscript scripts/realworld_v2_regime_scoring.R score ${{ matrix.batch }}
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT -e RW2_DATA_ROOT -e RW2_REPS -e RW2_SAMPLE_SIZES ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R score ${{ matrix.batch }}
       - uses: actions/upload-artifact@v4
         with:
           name: rw2-score-${{ matrix.batch }}
@@ -72,16 +66,13 @@ jobs:
     needs: score
     runs-on: ubuntu-latest
     timeout-minutes: 180
-    container:
-      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
       - uses: actions/download-artifact@v5
         with: {pattern: rw2-score-*, path: artifacts/realworld_regime_matched_v2/scoring, merge-multiple: true}
-      - run: Rscript scripts/realworld_v2_regime_scoring.R infer
+      - run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace -e RW2_ROOT ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/realworld_v2_regime_scoring.R infer
       - uses: actions/upload-artifact@v4
         with:
           name: rw2-realworld-v2-report
