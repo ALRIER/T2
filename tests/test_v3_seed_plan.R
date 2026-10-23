@@ -1,0 +1,11 @@
+#!/usr/bin/env Rscript
+source("R/00_shared/load_all.R");t2_load(".")
+t2_assert_seed_plan_v3()
+roles<-rep(c("discovery","heldout","stress"),c(10,5,5))
+for(i in 0:19) stopifnot(i %in% t2_seed_plan_v3[[roles[i+1L]]])
+for(f in c("normal","exwald")) {
+ keys<-vapply(0:19,function(i)t2_seed_for_v3(roles[i+1L],f,i,1000L),integer(1))
+ stopifnot(all(is.finite(keys)),length(unique(keys))==20L)
+}
+stopifnot(identical(t2_seed_plan_v3$realworld_n,c(200L,1000L)))
+cat("V3_SEED_PLAN_CONTRACT_PASS\n")
