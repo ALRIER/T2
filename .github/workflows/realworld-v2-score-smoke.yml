@@ -1,0 +1,33 @@
+name: T2 Real-world V2 — scoring smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
+      credentials: {username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }}}
+    env:
+      RW2_ROOT: artifacts/realworld_regime_matched_v2/scoring
+      RW2_DATA_ROOT: artifacts/realworld_regime_matched_v2/scoring/data/T2_rw2_external_catalog_664
+      RW2_REPS: '10'
+      RW2_SAMPLE_SIZES: '200'
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          row=$(tail -n +2 config/realworld_v2_zenodo.csv); url=$(printf '%s' "$row" | cut -d, -f4); expected=$(printf '%s' "$row" | cut -d, -f5)
+          mkdir -p "$RW2_ROOT/data"; curl -L --fail --retry 4 "$url" -o "$RW2_ROOT/catalog.tar"
+          printf '%s  %s\n' "$expected" "$RW2_ROOT/catalog.tar" | sha256sum -c -
+          tar -xf "$RW2_ROOT/catalog.tar" -C "$RW2_ROOT/data"
+      - run: Rscript scripts/realworld_v2_regime_scoring.R match
+      - run: Rscript scripts/realworld_v2_regime_scoring.R score 1
+      - run: Rscript -e "x<-readRDS(Sys.getenv('RW2_ROOT', 'artifacts/realworld_regime_matched_v2/scoring') |> file.path('scores_batch_001','scores.rds')); stopifnot(nrow(x)>0L, length(unique(x[['model_id']]))==192L)"
+      - uses: actions/upload-artifact@v4
+        with: {name: rw2-scoring-smoke, path: artifacts/realworld_regime_matched_v2/scoring}
