@@ -33,8 +33,8 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
                            root="artifacts/mc_v3_real26") {
  if(!role%in%c("discovery","heldout","stress")||
     !index%in%t2_seed_plan_v3[[role]])stop("Unassigned stage seed")
- if(!n%in%if(role=="discovery")1000L else c(200L,1000L,3000L))
-   stop("Invalid stage sample size")
+ allowed_n<-if(role=="discovery")1000L else c(200L,1000L,3000L)
+ if(!(n%in%allowed_n))stop("Invalid stage sample size")
  if(R<2L||n_scenarios<8L)stop("Invalid simulation size")
  design<-t2_v3_design(role,family,index,n,n_scenarios)
  params<-t2_v3_params(role,family,index,n,design$bounds$perturb)
@@ -50,16 +50,37 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
       !identical(z$component_names,ESTIMATOR_NAMES))stop("Incompatible checkpoint")
    return(z)
  }
- base_file<-file.path(folder,"base_samples.rds")
- if(file.exists(base_file))base<-t2_read_rds(base_file) else {
-   set.seed(t2_seed_for_v3(role,family,index,n,-3L))
-   base<-vapply(seq_len(R),function(k)generate_population(family,n,params),numeric(n))
-   t2_atomic_save(base,base_file)
+ # Separate parent sample pools across the three mechanism folds, so even
+ # the uncontaminated observations in omitted folds are unseen in fitting.
+ mechanism_folds<-list(
+   c("upper_tail","clustered_upper","point_mass"),
+   c("lower_tail","clustered_symmetric","mixture_bimodal_near"),
+   c("symmetric_t","mixture_bimodal_far"))
+ t2_v3_fold<-function(mechanism) {
+   if(mechanism=="none")return(0L)
+   k<-which(vapply(mechanism_folds,function(g)mechanism%in%g,logical(1)))
+   if(length(k)!=1L)stop("Unassigned contamination mechanism")
+   as.integer(k)
  }
- if(!identical(dim(base),c(as.integer(n),as.integer(R))))stop("Base pool shape mismatch")
+ pools<-vector("list",4L)
+ for(fold in 0:3) {
+   base_file<-file.path(folder,sprintf("base_fold%d.rds",fold))
+   if(file.exists(base_file)) {
+     base<-t2_read_rds(base_file)
+   } else {
+     set.seed(t2_seed_for_v3(role,family,index,n,-30L-fold))
+     base<-vapply(seq_len(R),function(k)generate_population(family,n,params),numeric(n))
+     t2_atomic_save(base,base_file)
+   }
+   if(!identical(dim(base),c(as.integer(n),as.integer(R))))
+     stop("Fold base pool shape mismatch")
+   pools[[fold+1L]]<-base
+ }
  sc<-vector("list",nrow(design$grid))
  for(i in seq_len(nrow(design$grid))) {
    row<-design$grid[i,,drop=FALSE]
+   fold<-t2_v3_fold(row$mechanism)
+   base<-pools[[fold+1L]]
    piece<-file.path(folder,sprintf("scenario_%04d.rds",row$scenario_id))
    if(file.exists(piece)) {
      z<-t2_read_rds(piece)
@@ -81,7 +102,7 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
        rate=row$rate,scale=row$scale,mechanism=row$mechanism,
        band=if(row$rate==0)"clean" else if(row$rate<=.05)"low" else
          if(row$rate<=.1)"intermediate" else "high",
-       component_names=ESTIMATOR_NAMES)
+       fold=fold,component_names=ESTIMATOR_NAMES)
      t2_atomic_save(z,piece)
    }
    sc[[i]]<-z
