@@ -37,14 +37,14 @@ def main():
     p.add_argument("--family", choices=["normal", "lognormal", "weibull", "invgauss", "exgaussian", "exwald"], required=True)
     p.add_argument("--trials", type=int, default=20)
     p.add_argument("--folds", type=int, default=3)
-    p.add_argument("--seeds", default="0,1")
+    p.add_argument("--seeds", default=",".join(str(i) for i in range(10)))
     p.add_argument("--output", default="artifacts/hpo_v1")
     args = p.parse_args()
     if args.folds != 3:
         p.error("HPO v1 currently implements three grouped contamination mechanism folds.")
     seeds = [int(s) for s in args.seeds.split(",")]
-    if not seeds or len(set(seeds)) != len(seeds) or not all(0 <= s <= 7 for s in seeds):
-        p.error("--seeds must be distinct discovery indices 0..7")
+    if not seeds or len(set(seeds)) != len(seeds) or not all(0 <= s <= 9 for s in seeds):
+        p.error("--seeds must be distinct discovery indices 0..9")
     root = pathlib.Path(args.output) / args.family / args.engine
     root.mkdir(parents=True, exist_ok=True)
     storage = "sqlite:///" + str((root / "optuna.sqlite3").resolve())
