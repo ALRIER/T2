@@ -15,8 +15,17 @@ t2_v3_design <- function(role,family,index,n,n_scenarios=120L) {
    rate=runif(n_scenarios,boundaries$rate[1],boundaries$rate[2]),
    scale=exp(runif(n_scenarios,log(boundaries$mad[1]),log(boundaries$mad[2]))),
    mechanism=mechanisms,stringsAsFactors=FALSE)
- if(role=="heldout") {\n   # Split confirmatory cases deterministically into interpolation and extrapolation.\n   take<-seq_len(n_scenarios)<=floor(n_scenarios/2)\n   tab$rate[take]<-runif(sum(take),.005,.20)\n   tab$scale[take]<-exp(runif(sum(take),log(1.5),log(12)))\n   tab$rate[!take]<-runif(sum(!take),.205,.30)\n   tab$scale[!take]<-exp(runif(sum(!take),log(12.5),log(30)))\n }\n tab$domain<-ifelse(tab$rate<=.20,"in_domain","out_of_domain")\n tab<-rbind(data.frame(scenario_id=0L,domain="clean",rate=0,scale=NA_real_,
-                       mechanism="none",stringsAsFactors=FALSE),tab)
+ if(role=="heldout") {
+   # Split confirmatory cases deterministically into interpolation and extrapolation.
+   take<-seq_len(n_scenarios)<=floor(n_scenarios/2)
+   tab$rate[take]<-runif(sum(take),.005,.20)
+   tab$scale[take]<-exp(runif(sum(take),log(1.5),log(12)))
+   tab$rate[!take]<-runif(sum(!take),.205,.30)
+   tab$scale[!take]<-exp(runif(sum(!take),log(12.5),log(30)))
+ }
+ tab$domain<-ifelse(tab$rate<=.20,"in_domain","out_of_domain")
+ tab<-rbind(data.frame(scenario_id=0L,rate=0,scale=NA_real_,
+                       mechanism="none",domain="clean",stringsAsFactors=FALSE),tab)
  stopifnot(nrow(tab)==n_scenarios+1L)
  list(grid=tab,bounds=boundaries,protocol="v3_continuous_role_disjoint")
 }
@@ -95,7 +104,17 @@ t2_v3_generate <- function(role,family,index,n,R=500L,n_scenarios=120L,
        if(row$rate>0) x<-inject_outliers_realistic(x,row$rate,row$scale,row$mechanism)
        x
      })
-     audit_path<-file.path(folder,"numeric_warnings.csv")\n     options(t2.audit.path=audit_path)\n     for(k in seq_along(samples)) {\n       options(t2.audit.context=list(stage=role,family=family,seed=index,n=n,\n         scenario=row$scenario_id,replicate=k))\n       # calculate with context for each replicate rather than an opaque matrix batch\n       if(k==1L)T<-matrix(NA_real_,length(samples),N_EST)\n       T[k,]<-component_vector(samples[[k]])\n     }\n     colnames(T)<-ESTIMATOR_NAMES\n     options(t2.audit.context=NULL,t2.audit.path=NULL)
+     audit_path<-file.path(folder,"numeric_warnings.csv")
+     options(t2.audit.path=audit_path)
+     for(k in seq_along(samples)) {
+       options(t2.audit.context=list(stage=role,family=family,seed=index,n=n,
+         scenario=row$scenario_id,replicate=k))
+       # calculate with context for each replicate rather than an opaque matrix batch
+       if(k==1L)T<-matrix(NA_real_,length(samples),N_EST)
+       T[k,]<-component_vector(samples[[k]])
+     }
+     colnames(T)<-ESTIMATOR_NAMES
+     options(t2.audit.context=NULL,t2.audit.path=NULL)
      if(!identical(colnames(T),ESTIMATOR_NAMES)||any(!is.finite(T)))
        stop("Invalid revised component matrix")
      z<-list(T=T,target=target,scenario_id=row$scenario_id,
