@@ -35,7 +35,7 @@ ga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(
    if(indicator < best - cfg$improvement*max(1,abs(best)) || !is.finite(best)) {best<-indicator;stale<-0L} else stale<-stale+1L
    t2_optimizer_save(shard,'ga',cfg,g,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
      history=history,best=best,stale=stale))
-   if(isTRUE(cfg$early_stop_enabled) && stale>=cfg$patience) break
+   if(t2_adaptive_stop(-history,stale,cfg)) break
  }
  t2_optimizer_save(shard,'ga',cfg,last_generation,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
    history=history,best=best,stale=stale),force=TRUE)
@@ -78,7 +78,7 @@ de_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(
   if(!is.finite(best)||indicator>best+cfg$improvement*max(1,abs(best))) {best<-indicator;stale<-0L} else stale<-stale+1L
   t2_optimizer_save(shard,'de',cfg,g,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
     history=history,best=best,stale=stale))
-  if(isTRUE(cfg$early_stop_enabled) && stale>=cfg$patience)break
+  if(t2_adaptive_stop(history,stale,cfg))break
  }
  t2_optimizer_save(shard,'de',cfg,last_generation,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
    history=history,best=best,stale=stale),force=TRUE)
