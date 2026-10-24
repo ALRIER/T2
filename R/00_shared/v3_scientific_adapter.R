@@ -54,5 +54,5 @@ t2_v3_read_scenario <- function(role,family,seed,n,id,reps=500L) {
   if (!file.exists(p)) stop('Missing V3 scientific scenario: ',p)
   s <- t2_read_rds(p)
   t2_v3_validate_scenario(s,id,reps)
-  s
+  t2_v3_prepare_scenario(s)
 }
