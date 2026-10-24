@@ -16,7 +16,6 @@ def suggest(trial, engine):
     cfg = {
         "population": trial.suggest_categorical("population", [50, 100, 150, 200]),
         "generations": trial.suggest_int("generations", 20, 100, step=20),
-        "patience": trial.suggest_int("patience", 5, 20, step=5),
         "improvement": trial.suggest_float("improvement", 1e-4, 1e-2, log=True),
     }
     if engine in ("ga", "nsga2"):
