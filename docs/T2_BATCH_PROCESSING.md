@@ -25,3 +25,9 @@ Still outstanding: the full canonical T payload is loaded into memory per source
 - Portfolio report now uses two passes over source-target taxonomies. Pass one keeps compact MSE and q95 p-value vectors across all 36 source-target pairs, ensuring **unchanged global BH-FDR families**. Pass two reads one taxonomy at a time, applies its corresponding globally adjusted q-values, and appends its classified rows into a temporary CSV. Completed global files are published by atomic rename.
 - This reduces full-table simultaneous residency. Global BH adjustment still needs all p-values for its family; an external-memory sorting implementation would be needed to bound even those vectors. Regional winner summary continues to load relatively small winner tables.
 - Runtime and output equivalence checks have NOT been run; the current environment has no Rscript executable. No full-stage validation or speed benchmark is claimed.
+
+## Canonical RDS lifecycle reduction
+
+In the confirmatory portfolio scorer, the original canonical RDS is fully loaded and checked for provenance and integrity, and its full T lineage is recorded before any material is discarded. Thereafter, only manifest-selected scenarios are retained; each is removed from the compact scenario list as soon as its score rows have been appended. Frozen 26-by-candidate W is constructed once and reused across scenario batches; GC can reclaim no-longer-referenced scientific matrices between batches.
+
+This does not make the initial whole-block RDS read streaming: native single-object RDS cannot expose individual scenarios without deserializing the archive. A future independent scenario-file layout plus signed manifest would remove that remaining peak, but requires careful archival migration and should not reinterpret older RDS files. GC also has a runtime cost, so benefits must be benchmarked before setting policies for all jobs.
