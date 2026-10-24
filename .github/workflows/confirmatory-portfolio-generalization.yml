@@ -1,4 +1,7 @@
-name: T2 Confirmatory — frozen portfolio generalization
+name: T2 Next-stage — frozen portfolio generalization
+
+# POST-MONTE-CARLO ONLY. This workflow consumes immutable artifacts.
+# It never dispatches, cancels, reruns, or edits upstream Monte Carlo jobs.
 
 on:
   workflow_dispatch:
