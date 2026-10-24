@@ -186,8 +186,14 @@ report_portfolio <- function() {
   engine_files <- list.files(root, 'engine_region_taxonomy.csv$', recursive=TRUE, full.names=TRUE)
   estimator_winner_files <- list.files(root, '^regional_winners.csv$', recursive=TRUE, full.names=TRUE)
   engine_winner_files <- list.files(root, '^engine_regional_winners.csv$', recursive=TRUE, full.names=TRUE)
-  if (!length(estimator_files) || !length(engine_files) || !length(estimator_winner_files) || !length(engine_winner_files))
-    stop('Portfolio report requires completed inference for every planned source-target pair')
+  expected_pairs <- length(t2_families())^2L
+  counts <- c(estimator=length(estimator_files), engine=length(engine_files),
+              estimator_winners=length(estimator_winner_files), engine_winners=length(engine_winner_files))
+  if (any(counts != expected_pairs))
+    stop('Portfolio report is incomplete: expected ', expected_pairs,
+         ' source-target pairs for each output, found ',
+         paste(names(counts), counts, sep='=', collapse=', '),
+         '. Preserve successful shards and rerun only missing pairs.')
   estimator <- do.call(rbind, lapply(estimator_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
   engine <- do.call(rbind, lapply(engine_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
   # One declared multiplicity family per metric and analysis level across the
