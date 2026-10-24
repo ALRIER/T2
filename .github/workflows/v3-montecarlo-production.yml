@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           if test -d artifacts/mc_v3_real26; then
-            find artifacts/mc_v3_real26 -type f -print0 | sort -z | xargs -0 -r sha256sum > artifacts/mc_v3_real26/SHA256SUMS
+            find artifacts/mc_v3_real26 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 -r sha256sum | sudo tee artifacts/mc_v3_real26/SHA256SUMS >/dev/null
           fi
       - name: Upload partition results for manual local backup
         if: always()
