@@ -21,12 +21,12 @@ if(file.exists(nullfile))file.remove(nullfile)
 for(id in 0:120){
  sc<-t2_v3_read_scenario('discovery',fam,seed,1000L,id)
  set.seed(t2_seed(paste(fam,seed,id,'discovery_posthoc'),908L))
- z<-t2_v3_infer_scenario(sc,mods,seed,seed,1000L,B=200L)
+ z<-t2_v3_infer_scenario(sc,mods,seed,seed,1000L,B=as.integer(ga_config$bootstrap_B))
  z$family<-fam;z$analysis_kind<-'IN_SAMPLE_DESCRIPTIVE'
  write.table(z,results,sep=',',append=id!=0L,col.names=id==0L,row.names=FALSE)
  if(id==0L){
   set.seed(t2_seed(paste(fam,seed,'null'),909L))
-  fpr<-t2_v3_null_fpr(sc,mods,seed,seed,Bnull=200L)
+  fpr<-t2_v3_null_fpr(sc,mods,seed,seed,Bnull=as.integer(ga_config$bootstrap_B))
   fpr$analysis_kind<-'EXCHANGEABILITY_NULL_DIAGNOSTIC'
   write.csv(fpr,nullfile,row.names=FALSE)
  }
