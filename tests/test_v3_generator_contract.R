@@ -16,10 +16,10 @@ D<-lapply(c("discovery","heldout","stress"),function(stage){
  index<-t2_seed_plan_v3[[stage]][1]
  t2_v3_design(stage,"normal",index,1000L,16L)$grid
 })
-stopifnot(max(D[[1]]$rate[-1])<min(D[[2]]$rate[-1]),
-          max(D[[2]]$rate[-1])<min(D[[3]]$rate[-1]),
-          max(D[[1]]$scale[-1])<min(D[[2]]$scale[-1]),
-          max(D[[2]]$scale[-1])<min(D[[3]]$scale[-1]))
+stopifnot(any(D[[2]]$domain=="in_domain"),
+          any(D[[2]]$domain=="out_of_domain"),
+          max(D[[1]]$rate[-1])<min(D[[3]]$rate[-1]),
+          max(D[[1]]$scale[-1])<min(D[[3]]$scale[-1]))
 stopifnot(!identical(t2_seed_for_v3("discovery","normal",0L,1000L),
                      t2_seed_for_v3("heldout","normal",10L,1000L)))
 tmp<-tempfile("v3_smoke_")
