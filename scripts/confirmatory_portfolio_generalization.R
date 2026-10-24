@@ -67,6 +67,17 @@ load_canonical <- function(family, seed) {
       as.integer(x$n) != as.integer(pg_value('sample_n')) ||
       as.integer(x$replications) != as.integer(pg_value('replications')) || length(x$scenarios) != 361L)
     stop('Archived canonical block has incompatible provenance: ', p)
+  if (!is.list(x$scenarios) || anyDuplicated(vapply(x$scenarios, function(s) as.integer(s$scenario_id), integer(1L))) ||
+      !identical(sort(vapply(x$scenarios, function(s) as.integer(s$scenario_id), integer(1L))), seq_len(361L)))
+    stop('Archived canonical block has missing or duplicate scenario IDs: ', p)
+  expected_rep <- as.integer(pg_value('replications'))
+  for (i in seq_along(x$scenarios)) {
+    sc <- x$scenarios[[i]]
+    if (!is.matrix(sc$T) || !identical(dim(sc$T), c(expected_rep, 26L)) ||
+        !is.numeric(sc$T) || any(!is.finite(sc$T)) ||
+        length(sc$target) != 1L || !is.finite(sc$target))
+      stop('Invalid estimator matrix or target in canonical scenario ', i, ': ', p)
+  }
   x
 }
 
