@@ -10,6 +10,11 @@ t2_v3_block_dir <- function(role,family,seed,n,reps=500L) {
   file.path(t2_v3_scientific_root(),t2_v3_protocol(),role,family,
             sprintf('seed%02d',as.integer(seed)),sprintf('n%d_r%d',as.integer(n),as.integer(reps)))
 }
+t2_v3_prepare_scenario <- function(s) {
+  s$eligible <- rep(TRUE,26L)
+  s$benchmark <- precompute_benchmarks(s$T,s$target,s$eligible)
+  t2_v3_prepare_scenario(s)
+}
 t2_v3_validate_scenario <- function(s, id, reps=500L) {
   if (!is.list(s) || !identical(as.integer(s$scenario_id),as.integer(id)) ||
       !is.matrix(s$T) || !is.numeric(s$T) ||
@@ -40,7 +45,7 @@ t2_v3_read_block <- function(role,family,seed,n,reps=500L,selected=NULL) {
   if (is.null(selected)) selected <- ids
   if (anyDuplicated(selected) || !all(selected %in% ids)) stop('V3 selected IDs mismatch')
   for (id in selected) t2_v3_validate_scenario(z$scenarios[[match(id,ids)]],id,reps)
-  z$scenarios <- z$scenarios[match(selected,ids)]
+  z$scenarios <- lapply(z$scenarios[match(selected,ids)],t2_v3_prepare_scenario)
   z
 }
 t2_v3_read_scenario <- function(role,family,seed,n,id,reps=500L) {
