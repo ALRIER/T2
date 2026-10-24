@@ -1,0 +1,146 @@
+name: T2 V3 — 240 partition audit and rapid smoke
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths: ['.github/workflows/v3-audit-240-and-smoke.yml']
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Completed V3 Monte Carlo production run ID (optional; auto-select if empty)'
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: t2-v3-audit-and-smoke-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      source_run_id: ${{ steps.pick.outputs.source_run_id }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Resolve V3 Monte Carlo run and verify names of 240 artifacts
+        id: pick
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_RUN: ${{ inputs.source_run_id }}
+        with:
+          script: |
+            let runId = process.env.REQUESTED_RUN;
+            if (!runId) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo,{
+                owner:context.repo.owner,repo:context.repo.repo,branch:'t2-hpo-redesign-v1',per_page:100
+              });
+              const candidates = runs.filter(r=>r.name==='T2 V3 - Monte Carlo Production Only' && r.conclusion==='success');
+              if (!candidates.length) return core.setFailed('No successful V3 production workflow was found');
+              runId=String(candidates[0].id);
+            }
+            const {data:run}=await github.rest.actions.getWorkflowRun({
+              owner:context.repo.owner,repo:context.repo.repo,run_id:Number(runId)
+            });
+            if(run.name!=='T2 V3 - Monte Carlo Production Only' || run.conclusion!=='success')
+              return core.setFailed('Source is not a successful V3 production run');
+            const artifacts=await github.paginate(github.rest.actions.listWorkflowRunArtifacts,{
+              owner:context.repo.owner,repo:context.repo.repo,run_id:Number(runId),per_page:100
+            });
+            const families=['normal','lognormal','weibull','invgauss','exgaussian','exwald'];
+            const expected=[];
+            for(const family of families) {
+              for(let seed=0;seed<10;seed++) expected.push(`mc-v3-discovery-${family}-seed${seed}-n1000`);
+              for(const role of ['heldout','stress'])
+                for(let seed=(role==='heldout'?10:15);seed<(role==='heldout'?15:20);seed++)
+                  for(const n of [200,1000,3000])
+                    expected.push(`mc-v3-${role}-${family}-seed${seed}-n${n}`);
+            }
+            const present=new Map(artifacts.filter(a=>!a.expired).map(a=>[a.name,a]));
+            const missing=expected.filter(n=>!present.has(n));
+            if(missing.length) return core.setFailed(`Missing or expired scientific artifacts (${missing.length}): ${missing.slice(0,8).join(', ')}`);
+            core.setOutput('source_run_id',runId);
+            core.info(`V3 source run ${runId}: all ${expected.length} unique artifact names present`);
+      - uses: actions/checkout@v4
+      - id: plan
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          families=['normal','lognormal','weibull','invgauss','exgaussian','exwald']
+          rows=[]
+          for family in families:
+              for seed in range(10):
+                  rows.append(dict(role='discovery',family=family,seed=seed,n=1000))
+              for role, seeds in [('heldout',range(10,15)),('stress',range(15,20))]:
+                  for seed in seeds:
+                      for n in [200,1000,3000]:
+                          rows.append(dict(role=role,family=family,seed=seed,n=n))
+          assert len(rows)==240
+          print('matrix='+json.dumps({'include':rows},separators=(',',':')))
+          PY
+  audit:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-${{ matrix.role }}-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/mc_v3_real26
+          run-id: ${{ needs.plan.outputs.source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Check archived scientific files
+        env:
+          ROLE: ${{ matrix.role }}
+          FAMILY: ${{ matrix.family }}
+          SEED: ${{ matrix.seed }}
+          SAMPLE_N: ${{ matrix.n }}
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_audit_partition.R "$ROLE" "$FAMILY" "$SEED" "$SAMPLE_N"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-audit-${{ matrix.role }}-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/v3_audit/*.csv
+          if-no-files-found: warn
+          retention-days: 30
+  smoke:
+    needs: [plan,audit]
+    if: ${{ needs.audit.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install three real independent V3 partitions
+        env:
+          RUN_ID: ${{ needs.plan.outputs.source_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in discovery:0:1000 heldout:10:200 stress:15:200; do
+            IFS=: read -r role seed n <<< "$spec"
+            mkdir -p /tmp/t2-smoke
+            gh run download "$RUN_ID" -n "mc-v3-$role-normal-seed$seed-n$n" -D /tmp/t2-smoke
+            mkdir -p artifacts/mc_v3_real26
+            cp -a /tmp/t2-smoke/. artifacts/mc_v3_real26/
+            rm -rf /tmp/t2-smoke
+          done
+      - name: Run frozen discovery / heldout / stress smoke
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_full_handoff_smoke.R
