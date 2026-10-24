@@ -22,3 +22,18 @@ stress_run_models <- function(data_generator,models,conditions,
 stress_diagnostics <- function(results) {
   aggregate(cbind(mse,q95)~model+sample_n,data=results,FUN=function(v)c(mean=mean(v),max=max(v)))
 }
+
+
+# Evaluate frozen stress samples with paired replicate-level q95 uncertainty.
+stress_frozen_q95_ci <- function(T,models,target,B=500L,seed=1L) {
+ stopifnot(length(models)>0L)
+ base<-(T[,match("mean",colnames(T))]-target)^2
+ do.call(rbind,lapply(seq_along(models),function(i) {
+  e<-(model_predict(T,models[[i]])-target)^2
+  ci<-t2_q95_ci_v3(e,base,B=B,seed=seed+i)
+  data.frame(model=models[[i]]$id,q95=ci$q95,
+    q95_lower=ci$q95_lower,q95_upper=ci$q95_upper,
+    q95_delta=ci$delta,q95_delta_lower=ci$delta_lower,
+    q95_delta_upper=ci$delta_upper,bootstrap_B=B)
+ }))
+}
