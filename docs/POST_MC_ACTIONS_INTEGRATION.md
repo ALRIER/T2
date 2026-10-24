@@ -18,3 +18,11 @@ The consumer identifies one source run using the required `validation_run_id` pa
 2. Confirm the downstream RDS adapter works with the actual archived structure and checksums.
 3. Preserve the independent local scientific backup and test restoring it.
 4. Run a small downstream-only integration test, then enable the complete consumer after verifying required scientific partitions.
+
+## Immutable T/W lineage
+
+The frozen scientific `T` matrix is generated in Monte Carlo; `W` is the candidate weight matrix learned by Discovery. T must remain unchanged during training and validation, and W must remain unchanged after Discovery. The existing 192-model confirmatory manifest already includes one SHA-256 per frozen W file; the downstream scorer now verifies those SHA-256 values and exports `w_candidate_trace.csv`.
+
+Each downstream source-target-seed scoring shard exports `t_scenario_trace.csv`, containing a stable matrix ID and scenario ID plus SHA-256 digests of the numeric T matrix and target. Individual components and cells are identified without a giant per-cell CSV by the deterministic scheme `T-<family>-s<seed>-n<n>-r<reps>-sc<scenario>-r<replication>-c<component_index>`. Component index follows the canonical ordered 26-estimator registry. The IDs are *coordinates*, while the cryptographic scenario hash authenticates the associated data contents. The scorer rejects a preexisting trace that differs from a recomputed trace.
+
+Current limitation: the hashes are checked/generated in the downstream scoring stage; they are not retroactively embedded inside ongoing Monte Carlo artifacts. Unchanged upstream output is intentional. A full end-to-end smoke test of this new trace layer is required before merging.
