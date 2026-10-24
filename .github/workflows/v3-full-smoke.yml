@@ -37,7 +37,24 @@ jobs:
       - name: Full three-stage smoke and checkpoint recovery
         run: |
           set -o pipefail
-          /usr/bin/time -v -o artifacts/v3_full_smoke/resources.txt bash scripts/run_r_in_container.sh Rscript scripts/v3_full_smoke.R 2>&1 | tee artifacts/v3_full_smoke/smoke.log
+          docker run --rm --entrypoint /bin/sh ghcr.io/alrier/t2-r:4.3.3-statmod-v1 -c 'command -v /usr/bin/time || true' > artifacts/v3_full_smoke/container_time_check.txt
+          set +e
+          docker stats --no-stream > artifacts/v3_full_smoke/docker_stats_baseline.txt
+          set -e
+          docker run --name t2-v3-full-smoke --rm -v "$PWD:/workspace" -w /workspace ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/v3_full_smoke.R > artifacts/v3_full_smoke/smoke.log 2>&1 &
+          pid=$!
+          (
+            while kill -0 "$pid" 2>/dev/null; do
+              docker stats --no-stream --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}}' t2-v3-full-smoke >> artifacts/v3_full_smoke/container_stats.csv 2>/dev/null || true
+              sleep 0.25
+            done
+          ) &
+          monitor=$!
+          wait "$pid"
+          status=$?
+          wait "$monitor" || true
+          cat artifacts/v3_full_smoke/smoke.log
+          exit "$status"
       - name: Backup export, SHA256 and restore verification
         run: |
           set -euo pipefail
