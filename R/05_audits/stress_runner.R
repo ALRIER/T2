@@ -1,7 +1,7 @@
 # Frozen-model stress tests, with NO training or weight update.
 # The original validation suite is archived in legacy_sources for auditability.
 stress_run_models <- function(data_generator,models,conditions,
-                              R=200L,n=c(200L,1000L,3000L),seed=501L) {
+                              R=200L,n=c(200L,1000L,3000L),seed=501L,bootstrap_B=500L) {
   stopifnot(is.function(data_generator),length(models)>0L)
   rows<-list();k<-0L
   for(s in seq_len(nrow(conditions))) for(nn in n){
@@ -14,6 +14,11 @@ stress_run_models <- function(data_generator,models,conditions,
     if(is.null(target)||length(target)!=1L||!is.finite(target))
       stop('Generator must supply known true mean via condition metadata')
     y<-score_model_set(T,models,target)
+    if(R>=30L) {
+      ci<-stress_frozen_q95_ci(T,models,target,B=bootstrap_B,seed=seed+s*1000L+nn)
+      ix<-match(y$model,ci$model)
+      for(k in setdiff(names(ci),'model'))y[[k]]<-ci[[k]][ix]
+    }
     y$scenario_id<-if('scenario_id'%in%names(conditions)) conditions$scenario_id[s] else s
     y$sample_n<-nn;k<-k+1L;rows[[k]]<-y
   }
