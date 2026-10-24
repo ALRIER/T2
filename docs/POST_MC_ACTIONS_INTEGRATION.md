@@ -1,14 +1,20 @@
-# T2 post-Monte-Carlo Actions integration
+# T2 downstream scientific-input contract
 
-## Source and recovery
+## Scientific data versus recovery artifacts
 
-The downstream workflow accepts `validation_run_id` as a manual dispatch input and downloads the existing immutable `validation-<family>-seed-<seed>` artifacts using GitHub Actions permissions. Exactly one `n1000_r500.rds` must be found per selected partition; further R-level validation checks 361 unique scenario identifiers, a 500 x 26 numeric finite estimator matrix per scenario, and finite targets. An invalid or absent partition fails the consumer without changing its source. The downstream recovery process uses source artifacts without altering them. Zenodo is not required for this consumer path.
+The downstream stages import only the scientific inputs needed by their computation. The current frozen portfolio implementation requires the canonical estimator matrix T stored in `n1000_r500.rds`. A CSV or packaged archive may be accepted by a future adapter only if it preserves every required scenario, estimator column, target, seed, and provenance field. CSV summaries alone cannot reconstruct the canonical raw T matrices.
 
-## Before enabling
+Checkpoints, progress RDS, runner logs, temporary parts, and transfer metadata belong to the recovery layer. They are not part of the downstream study inputs and are not copied into the consumer's canonical input directory. Scientific input copies are immutable.
 
-1. Inventory and verify the upstream run ID and all artifact names, storage expiry and data dimensions (source might not use these names).
-2. Verify a complete independent local snapshot and SHA256 manifests, and ensure restoration is reversible.
-3. Run a separate smoke validation of a copied partition without touching active runs.
-4. After verification, enable the downstream workflow with the correct source run ID.
+## GitHub Actions transfer detail
 
-This PR is an initial consumer-side safety change, not evidence that the entire T2 pipeline is ready to run.
+The consumer identifies one source run using the required `validation_run_id` parameter, then downloads the named family/seed artifact, selects exactly one canonical `n1000_r500.rds`, copies it into the expected scientific directory and discards its staging directory. The R-level gate checks 361 scenario IDs, numeric 500-by-26 T matrices and finite targets.
+
+**Important:** `actions/download-artifact` transfers the entire named artifact first. Selecting one RDS reduces retained and processed data, but it does not reduce network bytes inside that artifact. To actually reduce transfer traffic, future upstream publication must expose separately named scientific-only artifacts (or an immutable RAW bundle per family/seed); there is no need to change historical jobs. The source names and artifact contents must be verified before activating this flow.
+
+## Verification
+
+1. Inventory current source artifact names and their provenance.
+2. Confirm the downstream RDS adapter works with the actual archived structure and checksums.
+3. Preserve the independent local scientific backup and test restoring it.
+4. Run a small downstream-only integration test, then enable the complete consumer after verifying required scientific partitions.
