@@ -52,7 +52,8 @@ jobs:
       - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
       - uses: actions/download-artifact@v5
         with: {name: t2-portfolio-manifest, path: artifacts/confirmatory_portfolio/manifest/}
-      - name: Restore archived target-family validation block
+      # Consume the scientific matrix only; operational checkpoints stay in source artifacts.
+      - name: Download source artifact for target-family validation block
         uses: actions/download-artifact@v5
         with:
           name: validation-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
@@ -77,7 +78,8 @@ jobs:
           mkdir -p "$expected"
           cp "$candidate" "${expected}/n1000_r500.rds"
           test -s "${expected}/n1000_r500.rds"
-          echo "Restored RDS block ${TARGET_FAMILY} seed ${VALIDATION_SEED} from Actions run ${VALIDATION_RUN_ID}"
+          rm -rf /tmp/validation-artifact
+          echo "Imported only the canonical RDS block for ${TARGET_FAMILY} seed ${VALIDATION_SEED} from Actions run ${VALIDATION_RUN_ID}"
       - run: Rscript scripts/confirmatory_portfolio_generalization.R score "${{ matrix.source_family }}" "${{ matrix.target_family }}" "${{ matrix.validation_seed }}" full
       - uses: actions/upload-artifact@v4
         if: always()
