@@ -59,6 +59,7 @@ t2_run_mc_validation <- function(mode,shard) {
 }
 
 t2_run_heldout <- function(discovery,mode,shard,family='normal') {
+ t2_validate_W(discovery$models)
  cfg<-discovery$config; replications<-if(mode=='smoke')30L else cfg$evaluation_replicates
  n_values<-if(mode=='smoke')c(200L,1000L,3000L) else cfg$heldout_n
  by_n<-lapply(seq_along(n_values),function(i){
@@ -66,12 +67,14 @@ t2_run_heldout <- function(discovery,mode,shard,family='normal') {
   per_sc<-lapply(s,function(z){scores<-score_model_set(z$T,discovery$models,z$target);scores$scenario_id<-z$scenario_id;scores$sample_n<-n;scores})
   do.call(rbind,per_sc)
  })
+ lapply(by_n, t2_validate_scores)
  audit <- t2_heldout_independence_audit(discovery, mode, shard, family, n_values)
  list(scores=do.call(rbind,by_n),models=discovery$models,stage='heldout',fresh_rng=TRUE,
       independence_audit=audit, budget_parity=t2_budget_parity_audit(discovery))
 }
 
 t2_run_stress <- function(discovery,mode,shard,family='normal') {
+ t2_validate_W(discovery$models)
  stress_mode <- if (mode == 'full') 'full' else 'smoke'
  stress_n <- as.integer(Sys.getenv('T2_STRESS_SAMPLE_N', unset=if(mode=='full') '1000' else '200'))
  stress_R <- as.integer(Sys.getenv('T2_STRESS_REPS', unset=if(mode=='full') '250' else '30'))
@@ -85,6 +88,7 @@ t2_run_stress <- function(discovery,mode,shard,family='normal') {
  }
  x<-t2_canonical_mc(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
  result<-do.call(rbind,lapply(x$scenarios,function(s){z<-score_model_set(s$T,discovery$models,s$target);z$scenario_id<-s$scenario_id;z}))
+ t2_validate_scores(result)
  list(scores=result,stage='stress',fixture=identical(mode, 'smoke'),stress_config=list(sample_n=stress_n,
       replications=stress_R,scenario_count=length(x$scenarios),family=family))
 }
