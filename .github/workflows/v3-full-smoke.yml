@@ -41,7 +41,7 @@ jobs:
           set +e
           docker stats --no-stream > artifacts/v3_full_smoke/docker_stats_baseline.txt
           set -e
-          docker run --name t2-v3-full-smoke --rm -v "$PWD:/workspace" -w /workspace ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/v3_full_smoke.R > artifacts/v3_full_smoke/smoke.log 2>&1 &
+          docker run --name t2-v3-full-smoke --rm -v "$PWD:/workspace" -w /workspace ghcr.io/alrier/t2-r:4.3.3-statmod-v1 /bin/sh -c 'Rscript scripts/v3_full_smoke.R; code=$?; cat /sys/fs/cgroup/memory.peak > artifacts/v3_full_smoke/smoke_memory_peak_bytes.txt 2>/dev/null || true; exit "$code"' > artifacts/v3_full_smoke/smoke.log 2>&1 &
           pid=$!
           (
             while kill -0 "$pid" 2>/dev/null; do
@@ -58,7 +58,7 @@ jobs:
       - name: Representative load benchmark, 500 replicates
         run: |
           set -euo pipefail
-          docker run --name t2-v3-load --rm -v "$PWD:/workspace" -w /workspace ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/v3_capacity_probe.R > artifacts/v3_full_smoke/capacity.log 2>&1 &
+          docker run --name t2-v3-load --rm -v "$PWD:/workspace" -w /workspace ghcr.io/alrier/t2-r:4.3.3-statmod-v1 /bin/sh -c 'Rscript scripts/v3_capacity_probe.R; code=$?; cat /sys/fs/cgroup/memory.peak > artifacts/v3_full_smoke/capacity_memory_peak_bytes.txt 2>/dev/null || true; exit "$code"' > artifacts/v3_full_smoke/capacity.log 2>&1 &
           pid=$!
           while kill -0 "$pid" 2>/dev/null; do
             docker stats --no-stream --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}}' t2-v3-load >> artifacts/v3_full_smoke/capacity_container_stats.csv 2>/dev/null || true
