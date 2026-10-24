@@ -23,7 +23,7 @@ for(case in cases) {
                           elapsed_seconds=proc.time()[["elapsed"]]-started)
 }
 # Recover an interrupted archive: remove canonical+one scenario; keep intact others.
-folder<-file.path(root,"v3_real26_seedplan20_foldisolated","discovery","normal","seed00","n1000_r5")
+folder<-file.path(root,"v3_real26_seedplan20_mixedheldout_rlm100","discovery","normal","seed00","n1000_r5")
 canonical<-file.path(folder,"canonical.rds")
 piece<-file.path(folder,"scenario_0008.rds")
 original<-t2_read_rds(canonical)
