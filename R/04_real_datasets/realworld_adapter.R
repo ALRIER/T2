@@ -79,10 +79,18 @@ t2_run_realworld_public <- function(discovery, mode = 'smoke', shard = 'realworl
     })
     names(prepared) <- dataset_ids
   }
-  scores <- do.call(rbind, lapply(seq_along(prepared), function(i) {
-    realworld_compare_models(prepared[[i]], discovery$models,
-                             dataset_id = dataset_ids[i])
-  }))
+  t2_validate_W(discovery$models)
+  dataset_batches <- t2_batch_indices(length(prepared),
+                                      t2_batch_size(length(prepared),'T2_DATASET_BATCH_SIZE',1L))
+  score_parts <- vector('list', length(dataset_batches))
+  for (j in seq_along(dataset_batches)) {
+    score_parts[[j]] <- do.call(rbind, lapply(dataset_batches[[j]], function(i) {
+      realworld_compare_models(prepared[[i]], discovery$models,
+                               dataset_id = dataset_ids[i])
+    }))
+  }
+  scores <- do.call(rbind,score_parts)
+  t2_validate_scores(scores)
   # Keep the bootstrap/inference audit as a separate table. The compact score
   # table retains the same mse/q95 contract used by heldout and aggregate.
   audit <- realworld_integrated_audit(
