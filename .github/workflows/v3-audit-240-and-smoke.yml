@@ -127,6 +127,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Push-triggered integrated audit of existing immutable Monte Carlo outputs.
       - name: Install three real independent V3 partitions
         env:
           RUN_ID: ${{ needs.plan.outputs.source_run_id }}
