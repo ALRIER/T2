@@ -1,4 +1,5 @@
 #!/usr/bin/env Rscript
+source('R/00_shared/load_all.R');t2_load('.')
 root <- 'artifacts/discovery_v3'
 families <- c('normal','lognormal','weibull','invgauss','exgaussian','exwald')
 rows <- list(); k<-0L
