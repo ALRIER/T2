@@ -12,6 +12,9 @@ precompute_benchmarks <- function(T,mu,eligible=rep(TRUE,26L)) {
 }
 evaluate_weights <- function(T,W,mu,eligible=rep(TRUE,26L),batch_size=32L,benchmark=NULL,
                              weights_normalized=FALSE) {
+  configured_batch <- suppressWarnings(as.integer(Sys.getenv('T2_FITNESS_BATCH_SIZE', as.character(batch_size))))
+  if (is.na(configured_batch) || configured_batch < 1L) stop('Invalid fitness batch size')
+  batch_size <- configured_batch
   if (!isTRUE(weights_normalized)) W <- normalize_weights(W,eligible)
   stopifnot(ncol(T)==26L,all(is.finite(T)),length(mu)==1L)
   if(is.null(benchmark)) benchmark<-precompute_benchmarks(T,mu,eligible)
