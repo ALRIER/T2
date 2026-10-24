@@ -36,7 +36,9 @@ stopifnot(!any(grid$mechanism[grid$scenario_id%in%valid_ids] %in%
 training<-mc$scenarios[match(train_ids,grid$scenario_id)]
 validation<-mc$scenarios[match(valid_ids,grid$scenario_id)]
 cfg<-ga_config;cfg$population<-as.integer(params$population);cfg$generations<-as.integer(params$generations)
-cfg$patience<-as.integer(params$patience);cfg$improvement<-as.numeric(params$improvement)
+cfg$patience<-as.integer(params$patience);cfg$max_patience<-cfg$patience+as.integer(params$patience_extension)
+cfg$min_generations<-as.integer(ceiling(cfg$generations*params$warmup_fraction))
+cfg$stop_window<-as.integer(params$stop_window);cfg$early_stop_enabled<-TRUE;cfg$improvement<-as.numeric(params$improvement)
 cfg$mutation_rate<-as.numeric(if(is.null(params$mutation_rate))ga_config$mutation_rate else params$mutation_rate)
 cfg$crossover_probability<-as.numeric(if(is.null(params$crossover_probability))ga_config$crossover_probability else params$crossover_probability)
 stopifnot(cfg$population>=8L,cfg$generations>=1L,cfg$patience>=1L)
