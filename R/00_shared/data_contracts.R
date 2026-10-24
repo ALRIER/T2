@@ -11,8 +11,9 @@ t2_validate_T <- function(x, expected_family=NULL, expected_seed=NULL,
   if (!is.null(expected_scenarios) && length(x$scenarios)!=expected_scenarios)
     stop('T contract: scenario count mismatch')
   ids <- vapply(x$scenarios,function(s) as.integer(s$scenario_id),integer(1L))
-  if (anyNA(ids) || anyDuplicated(ids) || any(ids<1L))
+  if (anyNA(ids) || anyDuplicated(ids) || any(ids<0L))
     stop('T contract: invalid scenario IDs')
+  if (0L %in% ids && !identical(x$grid$scenario_id[1L],0L)) stop('T contract: clean scenario grid mismatch')
   for (s in x$scenarios) {
     T <- s$T
     if (!is.matrix(T) || !is.numeric(T) || ncol(T)!=26L ||
