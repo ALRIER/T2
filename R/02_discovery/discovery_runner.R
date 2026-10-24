@@ -1,5 +1,6 @@
 t2_run_discovery <- function(data,mode,shard,engine='all'){
  data <- t2_load_mc_for_discovery(data, mode)
+ t2_validate_T(data)
  cfg<-ga_config
  if(mode=='smoke'){cfg$population<-8L;cfg$generations<-2L;cfg$patience<-2L;cfg$bootstrap_B<-100L}
  s<-data$scenarios
