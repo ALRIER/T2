@@ -32,7 +32,7 @@ jobs:
       - name: Contract and estimator tests
         run: |
           set -o pipefail
-          for test in tests/test_v3_no_legacy_calls.R tests/test_v3_seed_plan.R tests/test_revised_estimator_library.R tests/test_v3_generator_contract.R tests/test_v3_heldout_q95.R tests/test_v3_q95_all_stages.R; do
+          for test in tests/test_v3_no_legacy_calls.R tests/test_v3_seed_plan.R tests/test_revised_estimator_library.R tests/test_v3_generator_contract.R tests/test_v3_heldout_q95.R tests/test_v3_q95_all_stages.R tests/test_v3_adaptive_stop.R; do
             bash scripts/run_r_in_container.sh Rscript "$test" 2>&1 | tee -a artifacts/v3_full_smoke/contracts.log
           done
       - name: Full three-stage smoke and checkpoint recovery
