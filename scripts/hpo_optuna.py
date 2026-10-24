@@ -81,7 +81,10 @@ def main():
         q95 = sum(r["q95_ratio"] for r in rows) / len(rows)
         trial.set_user_attr("fold_mse", mse)
         trial.set_user_attr("fold_q95", q95)
-        return mse + q95
+        generation_fraction = sum(r["generations_ran"] / params["generations"] for r in rows) / len(rows)
+        trial.set_user_attr("generation_fraction", generation_fraction)
+        # Small prespecified computation cost encourages efficient stopping at similar statistical loss.
+        return mse + q95 + 0.02 * generation_fraction
 
     study.optimize(objective, n_trials=args.trials)
     (root / "best_trial.json").write_text(json.dumps({
