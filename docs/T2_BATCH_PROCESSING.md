@@ -18,3 +18,10 @@ Limitations: A complete canonical input RDS is still loaded per family/seed and 
 - Existing Held-out and Stress batching remains enabled.
 
 Still outstanding: the full canonical T payload is loaded into memory per source shard; confirmatory inference and global BH-FDR report assembly materialize complete tables; the real-world integrated audit also retains all condition results. Changing these safely requires streaming statistical accumulators and equivalence tests. There is no established performance or numerical-equivalence benchmark yet, and an R runtime is not available in the current inspection environment.
+
+## Global inference and report pass
+
+- Portfolio inference now reads one seed CSV at a time, aggregates with the original exact model/scenario/seed grouping and frees each source table before advancing.
+- Portfolio report now uses two passes over source-target taxonomies. Pass one keeps compact MSE and q95 p-value vectors across all 36 source-target pairs, ensuring **unchanged global BH-FDR families**. Pass two reads one taxonomy at a time, applies its corresponding globally adjusted q-values, and appends its classified rows into a temporary CSV. Completed global files are published by atomic rename.
+- This reduces full-table simultaneous residency. Global BH adjustment still needs all p-values for its family; an external-memory sorting implementation would be needed to bound even those vectors. Regional winner summary continues to load relatively small winner tables.
+- Runtime and output equivalence checks have NOT been run; the current environment has no Rscript executable. No full-stage validation or speed benchmark is claimed.
