@@ -2,13 +2,18 @@ name: T2 Confirmatory — frozen portfolio generalization
 
 on:
   workflow_dispatch:
+    inputs:
+      validation_run_id:
+        description: 'GitHub Actions run ID containing immutable validation-family RDS artifacts'
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 env:
-  VALIDATION_RUN_ID: '39707832846'
+  VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
   T2_PORTFOLIO_ROOT: artifacts/confirmatory_portfolio
 
 jobs:
@@ -68,7 +73,8 @@ jobs:
             mkdir -p "$(dirname "$expected")"
             mv "$(dirname "$candidate")" "$expected"
           fi
-          test -f "${expected}/n1000_r500.rds"
+          test -s "${expected}/n1000_r500.rds"
+          echo "Restored RDS block ${TARGET_FAMILY} seed ${VALIDATION_SEED} from Actions run ${VALIDATION_RUN_ID}"
       - run: Rscript scripts/confirmatory_portfolio_generalization.R score "${{ matrix.source_family }}" "${{ matrix.target_family }}" "${{ matrix.validation_seed }}" full
       - uses: actions/upload-artifact@v4
         if: always()
