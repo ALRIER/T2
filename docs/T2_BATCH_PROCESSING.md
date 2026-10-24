@@ -10,3 +10,11 @@ Downstream-only optimization, retaining original MSE and type-8 q95 definitions:
 Environment variables: `T2_MODEL_BATCH_SIZE=32`, `T2_SCENARIO_BATCH_SIZE=8`, `T2_DATASET_BATCH_SIZE=1`, `T2_FITNESS_BATCH_SIZE=32`. All must be positive integers. The choice of batch size should not change estimators or experimental seeds.
 
 Limitations: A complete canonical input RDS is still loaded per family/seed and confirmatory portfolio scoring and some inference paths retain materialized intermediate tables. Batch execution bounds prediction intermediates but does not yet guarantee fully streaming memory usage across every downstream component. Full empirical performance and equivalence testing is pending; no speedup is claimed without benchmarking. This update is separate from the currently running Monte Carlo computation.
+
+## Incremental phase
+
+- Confirmatory portfolio scoring now processes candidate weights in bounded matrix batches and writes each batch to a temporary CSV. It atomically publishes `scores.csv` only after complete success; the existing scoring output columns and statistical definitions are preserved. This prevents the old per-candidate `rows` accumulation.
+- Real-world bootstrap preparation now generates observations for one replicate at a time and immediately computes the 26 estimators, avoiding the former n-by-R raw sample matrix and sample list. The RNG call order is preserved by a sequential loop, subject to verification on the pinned runtime.
+- Existing Held-out and Stress batching remains enabled.
+
+Still outstanding: the full canonical T payload is loaded into memory per source shard; confirmatory inference and global BH-FDR report assembly materialize complete tables; the real-world integrated audit also retains all condition results. Changing these safely requires streaming statistical accumulators and equivalence tests. There is no established performance or numerical-equivalence benchmark yet, and an R runtime is not available in the current inspection environment.
