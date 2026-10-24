@@ -100,7 +100,7 @@ nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=re
    if(indicator>best_prior+cfg$improvement*max(1,abs(best_prior)) || !is.finite(best_prior)) {best_prior<-indicator;stale<-0L} else stale<-stale+1L
    t2_optimizer_save(shard,'nsga2',cfg,g,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
      history=history,best_prior=best_prior,stale=stale))
-   if(isTRUE(cfg$early_stop_enabled) && stale>=cfg$patience) break
+   if(t2_adaptive_stop(history,stale,cfg)) break
  }
  t2_optimizer_save(shard,'nsga2',cfg,last_generation,list(W=W,O=O,archiveW=archiveW,archiveO=archiveO,
    history=history,best_prior=best_prior,stale=stale),force=TRUE)
