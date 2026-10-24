@@ -153,154 +153,17 @@ t2_canonical_mc <- function(mode, family, seed_index, n, replications) {
   t2_atomic_save(out, path)
   out
 }
-t2_models <- function(d) {
- mods<-reference_model_set()
- for(engine in names(d)) {
-  result<-d[[engine]]; ix<-which.min(rowSums(sweep(result$objectives,2,pmax(colMeans(abs(result$objectives)),1e-12),'/')))
-  mods[[length(mods)+1L]]<-new_frozen_model(engine,weights=result$weights[,ix],family=engine)
- }
- mods
-}
-t2_require <- function(shard,stage) {
- path<-t2_dependency_path(shard,stage)
- if(!file.exists(path))stop(paste('Required stage missing:',stage,'for',shard))
- t2_read_rds(path)
-}
-t2_inference <- function(T,models,target,stage,seed) {
- model_comparison_table(T,models,target,benchmark_id='mean',stage=stage,B=ga_config$bootstrap_B,seed=seed)
-}
-t2_precheck <- function(shard, stage, mode) {
- required <- switch(stage, montecarlo=c('datasets','mc_validation'),
-   discovery=c('datasets','mc_validation','montecarlo'),
-   heldout=c('discovery'),realworld=c('datasets','discovery'),
-   stress=c('discovery'),aggregate=c('mc_validation','heldout','realworld','stress'), character())
- for (name in required) {
-  previous <- t2_require(shard,name)
-  if (!identical(previous$provenance$mode,mode)) stop(paste('Mode mismatch for dependency',name))
-  if (name %in% c('datasets','mc_validation') && !identical(previous$status,'PASS'))
-   stop(paste('Hard gate not passed:',name))
- }
- invisible(TRUE)
-}
-t2_run_datasets <- function(mode,shard) {
- manifest <- file.path('config','public_datasets.csv')
- if (!file.exists(manifest)) stop('Frozen public dataset manifest is missing')
- tab <- read.csv(manifest,stringsAsFactors=FALSE)
- if (!all(c('dataset_id','path','sha256','license') %in% names(tab))) stop('Incomplete dataset manifest')
- if (!nrow(tab)) stop('No datasets registered; cannot pass')
- if (mode=='full' && any(grepl('fixture|nonredistributable|review|pending|unknown',tab$license,ignore.case=TRUE)))
-   stop('Full runs require reviewed redistributable public inputs')
- if (any(!nzchar(tab$license))) stop('Dataset license not documented')
- if (any(!file.exists(tab$path))) stop('Dataset cache is incomplete')
- hashes <- unname(tools::md5sum(tab$path))
- if (anyNA(hashes)) stop('Cannot calculate dataset digests')
- if (requireNamespace('digest',quietly=TRUE)) {
-  actual <- vapply(tab$path,digest::digest,character(1),algo='sha256',file=TRUE)
- } else {
-  actual <- vapply(tab$path,function(f) {
-   z<-suppressWarnings(system2('sha256sum',shQuote(f),stdout=TRUE))
-   if(length(z)!=1L)stop('SHA256 unavailable');strsplit(z,' ')[[1]][1]
-  },character(1))
- }
- if (any(tolower(actual)!=tolower(tab$sha256))) stop('Dataset integrity mismatch')
- list(status='PASS',manifest=tab,sha256=actual,fixture=identical(mode,'smoke'))
-}
-t2_run_mc_validation <- function(mode,shard) {
- d<-t2_require(shard,'datasets')
- if(!identical(d$status,'PASS'))stop('Datasets did not pass')
- seed<-t2_seed(shard,730L);set.seed(seed)
- n <- if(mode=='smoke') 1500L else 20000L
- x<-generate_population('normal',n,t2_params('normal'))
- l1 <- is.finite(mean(x)) && abs(mean(x)) < 5/sqrt(n) &&
-       abs(sd(x)-1) < 5/sqrt(2*n)
- contaminated<-inject_outliers_realistic(x,contamination_rate=.2,outlier_scale_mad=9,type='upper_tail')
- l2 <- length(contaminated)==n && all(is.finite(contaminated)) &&
-       abs(mean(contaminated)-mean(x))>1e-3
- m <- if(mode=='smoke') 120L else 1500L
- z<-replicate(m,{a<-rnorm(200);c(mean(a)^2,median(a)^2)})
- l3 <- mean(z[1,]) < mean(z[2,])
- l4 <- nrow(d$manifest)>=1L && all(file.exists(d$manifest$path))
- results<-data.frame(layer=c('L1_interface','L2_interface','L3_interface','L4_manifest'),
-                    status=ifelse(c(l1,l2,l3,l4),'PASS','FAIL'),
-                    stringsAsFactors=FALSE)
- audits <- t2_run_integrated_mc_audits(mode, shard)
- results <- rbind(results, audits$summary)
- overall<-if(all(results$status=='PASS')) 'PASS' else 'FAIL'
-  anchor <- t2_run_mc_empirical_anchoring(mode, shard)
-  if (mode == 'full' && !identical(anchor$status, 'PASS')) overall <- 'FAIL'
-  if (mode == 'smoke' && identical(anchor$status, 'SKIPPED')) overall <-
-    if (audits$status == 'PASS' && all(results$status == 'PASS')) 'PASS' else 'FAIL'
-  list(status=overall, layers=results, empirical_anchor=anchor$status,
-       empirical_manifest=anchor$manifest,
-       results=c(audits$results, list(empirical_anchor=if (!is.null(anchor$results)) anchor$results else
-                      data.frame(status=anchor$status, reason=anchor$reason))),
-       seed=seed, scientific_scope=if(mode=='smoke')
-   'Integrated historical audit smoke plus interface checks; empirical anchoring is not executed in smoke' else
-   'Integrated historical audits plus empirical shape anchoring; final real-world validation remains separate',
-   integrated_historical_audits=audits$status,
-   legacy_four_layer_certified=isTRUE(mode == 'full' && audits$status == 'PASS' && anchor$status == 'PASS'))
-}
-t2_run_discovery <- function(data,mode,shard,engine='all'){
- if(is.null(data$scenarios)) {
-   if(is.null(data$family)||is.null(data$seed_index)||is.null(data$n)||is.null(data$replications))
-     stop('Monte Carlo reference is incomplete')
-   data<-t2_canonical_mc(mode,data$family,data$seed_index,data$n,data$replications)
- }
- cfg<-ga_config
- if(mode=='smoke'){cfg$population<-8L;cfg$generations<-2L;cfg$patience<-2L;cfg$bootstrap_B<-100L}
- s<-data$scenarios
- dispatch <- list(
-   ga=function() ga_discover(s,cfg,t2_seed(shard,201),shard=shard),
-   nsga2=function() nsga_discover(s,cfg,t2_seed(shard,202),shard=shard),
-   de=function() de_discover(s,cfg,t2_seed(shard,203),shard=shard),
-   dirichlet=function() dirichlet_discover(s,cfg,t2_seed(shard,204),n_draws=cfg$population*(cfg$generations+1L),shard=shard)
- )
- selected <- if (engine == 'all') names(dispatch) else engine
- if (!all(selected %in% names(dispatch))) stop('Unknown discovery engine')
- engines <- setNames(lapply(selected, function(name) dispatch[[name]]()), selected)
- list(engines=engines,models=t2_models(engines),config=cfg,
-      budget_registry=t2_discovery_budget_registry(cfg),seed=t2_seed(shard,200),
-      training_seed_index=if (length(data$seed_index)) as.integer(data$seed_index) else 0L,
-      mc_canonical_id=if(is.null(data$canonical_id)) NA_character_ else data$canonical_id)
-}
-t2_run_heldout <- function(discovery,mode,shard,family='normal') {
- cfg<-discovery$config; replications<-if(mode=='smoke')30L else cfg$evaluation_replicates
- n_values<-if(mode=='smoke')c(200L,1000L,3000L) else cfg$heldout_n
- by_n<-lapply(seq_along(n_values),function(i){
-  n<-n_values[i];s<-t2_canonical_mc(mode, family, t2_heldout_seed_index(), n, replications)$scenarios
-  per_sc<-lapply(s,function(z){scores<-score_model_set(z$T,discovery$models,z$target);scores$scenario_id<-z$scenario_id;scores$sample_n<-n;scores})
-  do.call(rbind,per_sc)
- })
- audit <- t2_heldout_independence_audit(discovery, mode, shard, family, n_values)
- list(scores=do.call(rbind,by_n),models=discovery$models,stage='heldout',fresh_rng=TRUE,
-      independence_audit=audit, budget_parity=t2_budget_parity_audit(discovery))
-}
-t2_run_realworld <- function(discovery,mode,shard) {
- t2_run_realworld_public(discovery, mode, shard)
-}
-t2_run_stress <- function(discovery,mode,shard,family='normal') {
- stress_mode <- if (mode == 'full') 'full' else 'smoke'
- stress_n <- as.integer(Sys.getenv('T2_STRESS_SAMPLE_N', unset=if(mode=='full') '1000' else '200'))
- stress_R <- as.integer(Sys.getenv('T2_STRESS_REPS', unset=if(mode=='full') '250' else '30'))
- if (!is.finite(stress_n) || stress_n < 20L || !is.finite(stress_R) || stress_R < 5L)
-   stop('Invalid stress runtime configuration')
- stress_path <- t2_mc_path(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
- if (mode == 'full' && identical(Sys.getenv('T2_REQUIRE_CANONICAL_STRESS', '0'), '1') &&
-     !file.exists(stress_path)) {
-   stop('Canonical stress block is missing: ', stress_path,
-        '; refusing to regenerate it inside every model shard')
- }
- x<-t2_canonical_mc(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
- result<-do.call(rbind,lapply(x$scenarios,function(s){z<-score_model_set(s$T,discovery$models,s$target);z$scenario_id<-s$scenario_id;z}))
- list(scores=result,stage='stress',fixture=identical(mode, 'smoke'),stress_config=list(sample_n=stress_n,
-      replications=stress_R,scenario_count=length(x$scenarios),family=family))
-}
-t2_run_aggregate <- function(shard){
- d<-t2_require(shard,'discovery');h<-t2_require(shard,'heldout');r<-t2_require(shard,'realworld');s<-t2_require(shard,'stress')
- stopifnot(length(d$models)>4L,nrow(h$scores)>0L,nrow(r$scores)>0L,nrow(s$scores)>0L)
- lapply(list(heldout=h,realworld=r,stress=s),function(z)stopifnot(all(c('model','mse','q95')%in%names(z$scores))))
- list(stage='aggregate',results=list(heldout=h$scores,realworld=r$scores,stress=s$scores),fixture_realworld=isTRUE(r$fixture),fixture_stress=isTRUE(s$fixture))
-}
+source('R/00_shared/data_contracts.R')
+source('R/00_shared/batching.R')
+# Downstream modules are loaded through this backward-compatible entrypoint.
+source('R/00_shared/artifact_registry.R')
+source('R/00_shared/frozen_registry.R')
+source('R/00_shared/mc_loader.R')
+source('R/02_discovery/discovery_runner.R')
+source('R/03_heldout/validation_runner.R')
+source('R/04_real_datasets/realworld_runner.R')
+source('R/05_audits/inference_runner.R')
+
 run_t2_stage <- function(stage,shard,mode='smoke',family='normal',seed_index=0L,engine='all'){
  started<-Sys.time()
  base<-t2_stage_dirs(shard,stage)$base

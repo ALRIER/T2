@@ -12,9 +12,14 @@ realworld_prepare <- function(x,sample_sizes=c(200L,1000L,3000L),R=500L,
     # With replacement for datasets shorter than n. Output records resampling scheme.
     # `sample()` does not accept `simplify`; simplification belongs to
     # `replicate()`. Keep the generated matrix stable across R versions.
-    draws<-replicate(R,sample(x,n,replace=(replace||n>length(x))))
-    samples<-lapply(seq_len(R),function(i)draws[,i])
-    out[[as.character(n)]]<-list(T=component_matrix(samples),target=theta,
+    T <- matrix(NA_real_,nrow=R,ncol=26L,
+                dimnames=list(NULL,ESTIMATOR_NAMES))
+    # Consume the same RNG draw sequence without allocating n x R observations.
+    for (i in seq_len(R)) {
+      sampled <- sample(x,n,replace=(replace||n>length(x)))
+      T[i,] <- component_vector(sampled)
+    }
+    out[[as.character(n)]]<-list(T=T,target=theta,
         dataset_n=length(x),sample_n=n,replace=replace||n>length(x),seed=seed)
   }
   out
