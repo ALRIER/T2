@@ -153,6 +153,7 @@ t2_canonical_mc <- function(mode, family, seed_index, n, replications) {
   t2_atomic_save(out, path)
   out
 }
+source('R/00_shared/data_contracts.R')
 # Downstream modules are loaded through this backward-compatible entrypoint.
 source('R/00_shared/artifact_registry.R')
 source('R/00_shared/frozen_registry.R')
