@@ -31,7 +31,7 @@ jobs:
       - name: Contract and estimator tests
         run: |
           set -o pipefail
-          for test in tests/test_v3_no_legacy_calls.R tests/test_v3_seed_plan.R tests/test_revised_estimator_library.R tests/test_v3_generator_contract.R; do
+          for test in tests/test_v3_no_legacy_calls.R tests/test_v3_seed_plan.R tests/test_revised_estimator_library.R tests/test_v3_generator_contract.R tests/test_v3_heldout_q95.R; do
             bash scripts/run_r_in_container.sh Rscript "$test" 2>&1 | tee -a artifacts/v3_full_smoke/contracts.log
           done
       - name: Full three-stage smoke and checkpoint recovery
@@ -55,6 +55,17 @@ jobs:
           wait "$monitor" || true
           cat artifacts/v3_full_smoke/smoke.log
           exit "$status"
+      - name: Representative load benchmark, 500 replicates
+        run: |
+          set -euo pipefail
+          docker run --name t2-v3-load --rm -v "$PWD:/workspace" -w /workspace ghcr.io/alrier/t2-r:4.3.3-statmod-v1 Rscript scripts/v3_capacity_probe.R > artifacts/v3_full_smoke/capacity.log 2>&1 &
+          pid=$!
+          while kill -0 "$pid" 2>/dev/null; do
+            docker stats --no-stream --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}}' t2-v3-load >> artifacts/v3_full_smoke/capacity_container_stats.csv 2>/dev/null || true
+            sleep 0.5
+          done
+          wait "$pid"
+          cat artifacts/v3_full_smoke/capacity.log
       - name: Backup export, SHA256 and restore verification
         run: |
           set -euo pipefail
