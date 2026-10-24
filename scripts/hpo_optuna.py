@@ -15,7 +15,11 @@ import optuna
 def suggest(trial, engine):
     cfg = {
         "population": trial.suggest_categorical("population", [50, 100, 150, 200]),
-        "generations": trial.suggest_int("generations", 20, 100, step=20),
+        "generations": trial.suggest_int("generations", 40, 100, step=20),
+        "patience": trial.suggest_int("patience", 6, 16, step=2),
+        "patience_extension": trial.suggest_int("patience_extension", 6, 18, step=3),
+        "warmup_fraction": trial.suggest_categorical("warmup_fraction", [0.25, 0.4, 0.55]),
+        "stop_window": trial.suggest_categorical("stop_window", [6, 10, 14]),
         "improvement": trial.suggest_float("improvement", 1e-4, 1e-2, log=True),
     }
     if engine in ("ga", "nsga2"):
