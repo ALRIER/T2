@@ -67,12 +67,14 @@ jobs:
         run: |
           set -euo pipefail
           expected="artifacts/mc_canonical/v2_shared_base_crn/full/${TARGET_FAMILY}/seed${VALIDATION_SEED}"
-          candidate=$(find /tmp/validation-artifact -type f -name 'n1000_r500.rds' -print -quit)
-          test -n "$candidate"
-          if [[ ! -f "${expected}/n1000_r500.rds" ]]; then
-            mkdir -p "$(dirname "$expected")"
-            mv "$(dirname "$candidate")" "$expected"
+          mapfile -t candidates < <(find /tmp/validation-artifact -type f -name 'n1000_r500.rds' -print)
+          if [[ "${#candidates[@]}" -ne 1 ]]; then
+            echo "Expected exactly one canonical RDS for ${TARGET_FAMILY}/${VALIDATION_SEED}; found ${#candidates[@]}" >&2
+            exit 1
           fi
+          candidate="${candidates[0]}"
+          mkdir -p "$expected"
+          cp "$candidate" "${expected}/n1000_r500.rds"
           test -s "${expected}/n1000_r500.rds"
           echo "Restored RDS block ${TARGET_FAMILY} seed ${VALIDATION_SEED} from Actions run ${VALIDATION_RUN_ID}"
       - run: Rscript scripts/confirmatory_portfolio_generalization.R score "${{ matrix.source_family }}" "${{ matrix.target_family }}" "${{ matrix.validation_seed }}" full
