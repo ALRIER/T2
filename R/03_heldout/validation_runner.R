@@ -64,8 +64,7 @@ t2_run_heldout <- function(discovery,mode,shard,family='normal') {
  n_values<-if(mode=='smoke')c(200L,1000L,3000L) else cfg$heldout_n
  by_n<-lapply(seq_along(n_values),function(i){
   n<-n_values[i];s<-t2_canonical_mc(mode, family, t2_heldout_seed_index(), n, replications)$scenarios
-  per_sc<-lapply(s,function(z){scores<-score_model_set(z$T,discovery$models,z$target);scores$scenario_id<-z$scenario_id;scores$sample_n<-n;scores})
-  do.call(rbind,per_sc)
+  t2_score_scenarios_batched(s,discovery$models,sample_n=n)
  })
  lapply(by_n, t2_validate_scores)
  audit <- t2_heldout_independence_audit(discovery, mode, shard, family, n_values)
@@ -87,7 +86,7 @@ t2_run_stress <- function(discovery,mode,shard,family='normal') {
         '; refusing to regenerate it inside every model shard')
  }
  x<-t2_canonical_mc(stress_mode, family, t2_heldout_seed_index(), stress_n, stress_R)
- result<-do.call(rbind,lapply(x$scenarios,function(s){z<-score_model_set(s$T,discovery$models,s$target);z$scenario_id<-s$scenario_id;z}))
+ result<-t2_score_scenarios_batched(x$scenarios,discovery$models)
  t2_validate_scores(result)
  list(scores=result,stage='stress',fixture=identical(mode, 'smoke'),stress_config=list(sample_n=stress_n,
       replications=stress_R,scenario_count=length(x$scenarios),family=family))
