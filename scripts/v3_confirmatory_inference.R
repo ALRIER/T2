@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 a<-commandArgs(trailingOnly=TRUE)
-if(length(a)<3L)stop('Usage: heldout|stress FAMILY SEED N [smoke]')
+if(length(a)<4L)stop('Usage: heldout|stress FAMILY SEED N [smoke]')
 role<-a[[1]];fam<-a[[2]];seed<-as.integer(a[[3]]);n<-as.integer(a[[4]])
 smoke<-length(a)>=5L&&identical(a[[5]],'smoke')
 if(!role%in%c('heldout','stress'))stop('Invalid role')
