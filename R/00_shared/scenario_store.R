@@ -28,7 +28,7 @@ t2_publish_scenario_store <- function(canonical_path, expected_family, expected_
         any(!is.finite(s$T)) || !is.finite(s$target))
       stop('Invalid canonical scenario')
     id <- as.integer(s$scenario_id)
-    if (length(id)!=1L || is.na(id) || id<1L) stop('Invalid scenario ID')
+    if (length(id)!=1L || is.na(id) || id<0L) stop('Invalid scenario ID')
     filename <- sprintf('scenario_%04d.rds',id)
     destination <- file.path(root,filename)
     if (file.exists(destination)) stop('Duplicate scenario ID')
