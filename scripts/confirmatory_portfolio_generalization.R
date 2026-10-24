@@ -227,18 +227,15 @@ report_portfolio <- function() {
          ' source-target pairs for each output, found ',
          paste(names(counts), counts, sep='=', collapse=', '),
          '. Preserve successful shards and rerun only missing pairs.')
-  estimator <- do.call(rbind, lapply(estimator_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
-  engine <- do.call(rbind, lapply(engine_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
-  # One declared multiplicity family per metric and analysis level across the
-  # complete source->target matrix—not 36 independent shard corrections.
-  classify <- function(z) {
-    z$mse_q_value <- p.adjust(z$mse_p_value, 'BH'); z$q95_q_value <- p.adjust(z$q95_p_value, 'BH')
-    z$mse_supported <- z$mse_difference < 0 & z$mse_ci_high < 0 & z$mse_q_value <= .05
-    z$q95_supported <- z$q95_difference < 0 & z$q95_ci_high < 0 & z$q95_q_value <= .05
-    z$evidence_taxonomy <- ifelse(z$mse_supported & z$q95_supported,'mse_and_q95',ifelse(z$mse_supported,'mse_only',ifelse(z$q95_supported,'q95_only','neither_metric')))
-    z
-  }
-  estimator <- classify(estimator); engine <- classify(engine)
+  # Global multiplicity remains across all 36 source-target shards. Only
+  # p-value vectors are globally materialized; taxonomy rows stream to CSV.
+  source('scripts/portfolio_stream_report.R')
+  out_root <- file.path(pg_root(), 'report')
+  dir.create(out_root,recursive=TRUE,showWarnings=FALSE)
+  estimator_rows <- pg_global_fdr_stream(estimator_files,
+    file.path(out_root,'estimator_region_taxonomy_all.csv'))
+  engine_rows <- pg_global_fdr_stream(engine_files,
+    file.path(out_root,'engine_region_taxonomy_all.csv'))
   long_winners <- function(paths, label) do.call(rbind, lapply(paths, function(p) {
     z <- read.csv(p, stringsAsFactors=FALSE, check.names=FALSE)
     do.call(rbind, lapply(c('mse_winner','q95_winner','pareto_winner'), function(metric) {
@@ -259,14 +256,12 @@ report_portfolio <- function() {
   championship <- rbind(win_summary(estimator_winners, 'winner'),
                         win_summary(engine_winners, 'winner'))
   out_root <- file.path(pg_root(), 'report'); dir.create(out_root, recursive=TRUE, showWarnings=FALSE)
-  t2_write_csv(estimator, file.path(out_root, 'estimator_region_taxonomy_all.csv'))
-  t2_write_csv(engine, file.path(out_root, 'engine_region_taxonomy_all.csv'))
   t2_write_csv(estimator_winners, file.path(out_root, 'estimator_regional_winners_all.csv'))
   t2_write_csv(engine_winners, file.path(out_root, 'engine_regional_winners_all.csv'))
   t2_write_csv(championship, file.path(out_root, 'championship_coverage.csv'))
   writeLines(c('# Frozen portfolio generalization report', '',
-    paste0('- estimator-region rows: ', nrow(estimator)),
-    paste0('- engine-region rows: ', nrow(engine)),
+    paste0('- estimator-region rows: ', estimator_rows),
+    paste0('- engine-region rows: ', engine_rows),
     '- Regional winner tables retain MSE, q95 and Pareto outcomes separately.',
     '- Championship coverage is a tournament summary; it does not invalidate local winners.'),
     file.path(out_root, 'README.md'))
