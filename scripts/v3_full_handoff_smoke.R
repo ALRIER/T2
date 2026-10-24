@@ -22,7 +22,14 @@ for (job in list(list(role='discovery',seed=0L,n=1000L),
   }
   cat('V3_INPUT_PASS',args$role,family,args$seed,args$n,'\n')
 }
-d <- t2_v3_discovery_input(family,0L,selected=c(0L,1L,120L))
+training_grid <- t2_v3_read_block('discovery',family,0L,1000L,selected=0:120)$grid
+bands <- ifelse(training_grid$rate==0,'clean',
+         ifelse(training_grid$rate<=.05,'low',
+         ifelse(training_grid$rate<=.1,'intermediate','high')))
+selected_training <- vapply(c('clean','low','intermediate','high'),
+                           function(b) training_grid$scenario_id[which(bands==b)[1L]],integer(1))
+if(anyNA(selected_training)) stop('Missing training contamination band')
+d <- t2_v3_discovery_input(family,0L,selected=unname(selected_training))
 fit <- t2_run_discovery(d,'smoke','v3-smoke-independent',engine='all')
 if (length(fit$engines)!=4L || length(fit$models)<5L) stop('Discovery engine smoke failed')
 learned <- Filter(function(m)!is.null(m$weights),fit$models)
