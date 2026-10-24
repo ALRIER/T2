@@ -13,7 +13,7 @@ t2_v3_block_dir <- function(role,family,seed,n,reps=500L) {
 t2_v3_prepare_scenario <- function(s) {
   s$eligible <- rep(TRUE,26L)
   s$benchmark <- precompute_benchmarks(s$T,s$target,s$eligible)
-  t2_v3_prepare_scenario(s)
+  s
 }
 t2_v3_validate_scenario <- function(s, id, reps=500L) {
   if (!is.list(s) || !identical(as.integer(s$scenario_id),as.integer(id)) ||
