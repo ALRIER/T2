@@ -6,7 +6,7 @@ ga_config <- list(
  contamination_types=c('upper_tail','lower_tail','symmetric_t','point_mass','clustered_upper','clustered_symmetric','mixture_bimodal_near','mixture_bimodal_far'),
  population=150L, generations=80L, seeds=10L,
  training_seed_indices=0:9, heldout_seed_index=10L, bootstrap_B=500L,
- patience=10L, improvement=.001, training_fraction=.8, batch_size=32L,
+ patience=10L, early_stop_enabled=FALSE, improvement=.001, training_fraction=.8, batch_size=32L,
  objective_names=c('mse','q95'), fdr_primary=.05, fdr_sensitivity=.10,
  mutation_rate=.15, crossover_probability=.9, evaluation_replicates=500L,
  training_bands=list(clean=0,low=c(.01,.05),intermediate=.10,high=c(.20,.30)),
