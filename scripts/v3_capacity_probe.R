@@ -7,7 +7,7 @@ z<-t2_v3_generate("discovery","normal",0L,1000L,R=500L,n_scenarios=8L,
  root="artifacts/v3_full_smoke/load_data")
 elapsed<-proc.time()[["elapsed"]]-before
 warnings_file<-file.path("artifacts/v3_full_smoke/load_data",
- "v3_real26_seedplan20_foldisolated","discovery","normal","seed00","n1000_r500","numeric_warnings.csv")
+ "v3_real26_seedplan20_mixedheldout_rlm100","discovery","normal","seed00","n1000_r500","numeric_warnings.csv")
 T<-z$scenarios[[2L]]$T\nerr<-(T[,2L]-z$target)^2\nref<-(T[,1L]-z$target)^2\nci<-t2_q95_ci_v3(err,ref,B=500L,seed=t2_seed_for_v3("discovery","normal",0L,1000L,-80L))\nsaveRDS(ci,"artifacts/v3_full_smoke/q95_ci_probe.rds")\nwarnings_count<-if(file.exists(warnings_file))nrow(read.csv(warnings_file)) else 0L
 dir.create("artifacts/v3_full_smoke",recursive=TRUE,showWarnings=FALSE)
 write.csv(data.frame(n=1000L,reps=500L,scenarios=nrow(z$grid),
