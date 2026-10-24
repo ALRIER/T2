@@ -15,7 +15,7 @@ source("R/01_monte_carlo/v3_generation.R")
 source("R/02_discovery/three_candidate_selection.R")
 cfg<-ga_config;p<-b$best_params
 cfg$population<-as.integer(p$population);cfg$generations<-as.integer(p$generations)
-cfg$patience<-as.integer(p$patience);cfg$improvement<-as.numeric(p$improvement)
+cfg$patience<-if(is.null(p$patience)) 10L else as.integer(p$patience);cfg$early_stop_enabled<-FALSE;cfg$improvement<-as.numeric(p$improvement)
 if(!is.null(p$mutation_rate))cfg$mutation_rate<-as.numeric(p$mutation_rate)
 if(!is.null(p$crossover_probability))cfg$crossover_probability<-as.numeric(p$crossover_probability)
 outdir<-file.path("artifacts","hpo_v1","refit",family,engine)
