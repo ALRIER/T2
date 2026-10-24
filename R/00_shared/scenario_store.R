@@ -1,11 +1,11 @@
 # Optional immutable per-scenario scientific store. Canonical RDS remains authoritative.
 t2_scenario_store <- function(canonical_path) paste0(canonical_path,'.scenarios')
-t2_publish_scenario_store <- function(canonical_path, expected_family, expected_seed) {
+t2_publish_scenario_store <- function(canonical_path, expected_family, expected_seed, selected=NULL) {
   if (!file.exists(canonical_path)) stop('Canonical RDS missing')
   root <- t2_scenario_store(canonical_path)
   manifest_path <- file.path(root,'scientific_manifest.csv')
   if (file.exists(manifest_path)) {
-    t2_verify_scenario_store(canonical_path, expected_family, expected_seed)
+    t2_verify_scenario_store(canonical_path, expected_family, expected_seed, selected)
     return(invisible(manifest_path))
   }
   if (dir.exists(root) && length(list.files(root,all.files=TRUE,no..=TRUE)))
@@ -16,9 +16,14 @@ t2_publish_scenario_store <- function(canonical_path, expected_family, expected_
       !is.list(canonical$scenarios) || !length(canonical$scenarios))
     stop('Canonical provenance mismatch')
   dir.create(root,recursive=TRUE,showWarnings=FALSE)
-  rows <- vector('list',length(canonical$scenarios))
-  for (i in seq_along(canonical$scenarios)) {
-    s <- canonical$scenarios[[i]]
+  all_ids <- vapply(canonical$scenarios,function(s) as.integer(s$scenario_id),integer(1L))
+  if (anyNA(all_ids) || anyDuplicated(all_ids)) stop('Invalid canonical scenario IDs')
+  if (is.null(selected)) selected <- all_ids
+  if (anyDuplicated(selected) || !all(selected %in% all_ids)) stop('Invalid selected scenario IDs')
+  selected_indices <- match(selected,all_ids)
+  rows <- vector('list',length(selected_indices))
+  for (i in seq_along(selected_indices)) {
+    s <- canonical$scenarios[[selected_indices[[i]]]]
     if (!is.matrix(s$T) || ncol(s$T)!=26L || !is.numeric(s$T) ||
         any(!is.finite(s$T)) || !is.finite(s$target))
       stop('Invalid canonical scenario')
