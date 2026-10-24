@@ -42,7 +42,7 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
       z$p_value[i]<-NA_real_
     }
   }
-  z$training_seed<-training_seed;z$heldout_seed<-heldout_seed;nrow(z)
+  z$training_seed<-training_seed;z$heldout_seed<-heldout_seed;
   z$sample_n<-n;z$scenario_id<-sc$scenario_id;z$replications<-R
   z
 }
@@ -56,4 +56,29 @@ t2_v3_adjust_inference <- function(z,alpha=.05) {
   # Quantile CI is descriptive; no confirmatory q95 p test implemented here.
   z$confirmed_q95_gain<-FALSE
   z
+}
+
+# Diagnostic null calibration: randomly swap candidate/reference error labels
+# per Monte Carlo replicate under the exchangeability null. It estimates the
+# type-I rejection rate of the unadjusted one-sided paired test.
+t2_v3_null_fpr <- function(sc, models, train_seed, eval_seed, Bnull=100L, alpha=.05) {
+  E<-vapply(models,function(m)(model_predict(sc$T,m)-sc$target)^2,numeric(nrow(sc$T)))
+  colnames(E)<-vapply(models,function(m)m$id,character(1))
+  base<-E[,'median'];R<-length(base)
+  result<-lapply(setdiff(colnames(E),'median'),function(nm) {
+    d<-base-E[,nm]
+    rejections<-rep(FALSE,Bnull)
+    for(b in seq_len(Bnull)) {
+      swapped<-sample(c(-1,1),R,replace=TRUE)*d
+      sd0<-stats::sd(swapped)
+      p<-if(sd0>0) stats::pt(-mean(swapped)/(sd0/sqrt(R)),df=R-1L) else 1
+      rejections[b]<-is.finite(p)&&p<alpha
+    }
+    data.frame(model=nm,reference='median',null_method='paired_random_swap',
+      nominal_alpha=alpha,null_reps=Bnull,false_positives=sum(rejections),
+      empirical_fpr=mean(rejections),training_seed=train_seed,
+      heldout_seed=eval_seed,scenario_id=sc$scenario_id,sample_n=R,
+      stringsAsFactors=FALSE)
+  })
+  do.call(rbind,result)
 }
