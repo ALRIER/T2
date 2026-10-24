@@ -15,6 +15,7 @@ if (!mode %in% c('smoke', 'full')) stop('MODE must be smoke or full')
 source('R/00_shared/load_all.R'); t2_load('.')
 source('R/00_shared/pipeline.R')
 source('R/06_confirmatory/immutable_provenance.R')
+source('R/00_shared/scenario_store.R')
 t2_check_runtime('.', strict = TRUE)
 
 pg_root <- function() Sys.getenv('T2_PORTFOLIO_ROOT', unset = 'artifacts/confirmatory_portfolio')
@@ -89,21 +90,26 @@ score_portfolio <- function(source, target, seed, mode) {
   tab <- tab[tab$source_family == source & tab$target_family == target, , drop = FALSE]
   if (!nrow(tab)) stop('Empty predeclared portfolio')
   if (mode == 'smoke') tab <- tab[seq_len(min(3L, nrow(tab))), , drop = FALSE]
-  canonical <- load_canonical(target, seed)
-  source_models <- t2_confirmatory_load_models(source)
-  trace_root <- file.path(pg_score_root(source,target,seed), 'provenance')
-  t2_trace_t(canonical, target, seed, as.integer(pg_value('sample_n')),
-             as.integer(pg_value('replications')), trace_root)
-  t2_trace_w(source_models$manifest, trace_root)
-  # Keep only the requested held-out scenarios after verifying the full
-  # canonical archive and recording its unchanged scientific provenance.
   selected_scenarios <- as.integer(tab$scenario_id)
   if (anyNA(selected_scenarios) || anyDuplicated(selected_scenarios) ||
-      any(selected_scenarios < 1L | selected_scenarios > length(canonical$scenarios)))
+      any(selected_scenarios < 1L | selected_scenarios > 361L))
     stop('Invalid predeclared scenario selection')
-  canonical$scenarios <- canonical$scenarios[selected_scenarios]
-  # The score loop addresses this compact list by manifest order.
-  gc(verbose=FALSE)
+  canonical_path <- t2_mc_path('full',target,seed,as.integer(pg_value('sample_n')),
+                              as.integer(pg_value('replications')))
+  store_root <- t2_scenario_store(canonical_path)
+  use_store <- file.exists(file.path(store_root,'scientific_manifest.csv'))
+  source_models <- t2_confirmatory_load_models(source)
+  trace_root <- file.path(pg_score_root(source,target,seed),'provenance')
+  if (use_store) {
+    selected_manifest <- t2_verify_scenario_store(canonical_path,target,seed,selected_scenarios)
+    t2_write_csv(selected_manifest,file.path(trace_root,'scientific_dependencies.csv'))
+  } else {
+    canonical <- load_canonical(target,seed)
+    t2_trace_t(canonical,target,seed,as.integer(pg_value('sample_n')),
+               as.integer(pg_value('replications')),trace_root)
+    canonical$scenarios <- canonical$scenarios[selected_scenarios]
+  }
+  t2_trace_w(source_models$manifest,trace_root)
   baseline <- source_models$reference[[1L]]
   root <- pg_score_root(source,target,seed)
   dir.create(root,recursive=TRUE,showWarnings=FALSE)
@@ -123,7 +129,9 @@ score_portfolio <- function(source, target, seed, mode) {
   for (sc_ix in t2_batch_indices(nrow(tab),scenario_batch)) {
     for (i in sc_ix) {
       scenario_id <- tab$scenario_id[[i]]
-      sc <- canonical$scenarios[[i]]
+      sc <- if (use_store) {
+        t2_read_rds(file.path(store_root,selected_manifest$filename[[i]]))
+      } else canonical$scenarios[[i]]
       bse <- (model_predict(sc$T,baseline)-sc$target)^2
       bm <- mean(bse)
       bq <- unname(quantile(bse,.95,type=8))
@@ -147,7 +155,7 @@ score_portfolio <- function(source, target, seed, mode) {
                     quote=TRUE,na='')
       }
       # Release the completed scenario before continuing to the next.
-      canonical$scenarios[i] <- list(NULL)
+      if (!use_store) canonical$scenarios[i] <- list(NULL)
       rm(sc,bse)
     }
     if (isTRUE(getOption('t2.scenario_gc',TRUE))) gc(verbose=FALSE)
