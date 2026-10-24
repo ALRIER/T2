@@ -95,6 +95,15 @@ score_portfolio <- function(source, target, seed, mode) {
   t2_trace_t(canonical, target, seed, as.integer(pg_value('sample_n')),
              as.integer(pg_value('replications')), trace_root)
   t2_trace_w(source_models$manifest, trace_root)
+  # Keep only the requested held-out scenarios after verifying the full
+  # canonical archive and recording its unchanged scientific provenance.
+  selected_scenarios <- as.integer(tab$scenario_id)
+  if (anyNA(selected_scenarios) || anyDuplicated(selected_scenarios) ||
+      any(selected_scenarios < 1L | selected_scenarios > length(canonical$scenarios)))
+    stop('Invalid predeclared scenario selection')
+  canonical$scenarios <- canonical$scenarios[selected_scenarios]
+  # The score loop addresses this compact list by manifest order.
+  gc(verbose=FALSE)
   baseline <- source_models$reference[[1L]]
   root <- pg_score_root(source,target,seed)
   dir.create(root,recursive=TRUE,showWarnings=FALSE)
@@ -104,17 +113,22 @@ score_portfolio <- function(source, target, seed, mode) {
   complete <- FALSE
   on.exit(if (!complete && file.exists(staged)) unlink(staged),add=TRUE)
   ids <- names(source_models$candidates)
+  # Frozen candidate weights cannot change across scenarios. Construct the
+  # 26-by-candidates matrix once instead of thousands of times.
+  frozen_weights <- do.call(cbind,lapply(source_models$candidates,function(m)m$weights))
+  if (!identical(dim(frozen_weights),c(26L,length(ids))) ||
+      any(!is.finite(frozen_weights))) stop('Invalid frozen candidate matrix')
   batch <- t2_batch_size(length(ids),'T2_MODEL_BATCH_SIZE',32L)
   scenario_batch <- t2_batch_size(nrow(tab),'T2_SCENARIO_BATCH_SIZE',8L)
   for (sc_ix in t2_batch_indices(nrow(tab),scenario_batch)) {
     for (i in sc_ix) {
       scenario_id <- tab$scenario_id[[i]]
-      sc <- canonical$scenarios[[as.integer(scenario_id)]]
+      sc <- canonical$scenarios[[i]]
       bse <- (model_predict(sc$T,baseline)-sc$target)^2
       bm <- mean(bse)
       bq <- unname(quantile(bse,.95,type=8))
       for (ix in t2_batch_indices(length(ids),batch)) {
-        weights <- do.call(cbind,lapply(source_models$candidates[ix],function(m)m$weights))
+        weights <- frozen_weights[,ix,drop=FALSE]
         predictions <- sc$T %*% weights
         errors <- sweep(predictions,1L,sc$target,'-')^2
         mse <- colMeans(errors)
@@ -132,7 +146,11 @@ score_portfolio <- function(source, target, seed, mode) {
                     col.names=!file.exists(staged),append=file.exists(staged),
                     quote=TRUE,na='')
       }
+      # Release the completed scenario before continuing to the next.
+      canonical$scenarios[i] <- list(NULL)
+      rm(sc,bse)
     }
+    if (isTRUE(getOption('t2.scenario_gc',TRUE))) gc(verbose=FALSE)
   }
   if (!file.exists(staged) || file.info(staged)$size==0L)
     stop('No scientific scores generated')
