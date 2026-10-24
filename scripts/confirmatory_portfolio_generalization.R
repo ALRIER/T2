@@ -143,16 +143,21 @@ score_portfolio <- function(source, target, seed, mode) {
 }
 
 infer_portfolio <- function(source, target, mode) {
-  seeds <- pg_seeds(mode); all <- lapply(seeds, function(s) {
-    p <- file.path(pg_score_root(source,target,s), 'scores.csv')
-    if (!file.exists(p)) stop('Missing portfolio score: ', p)
-    read.csv(p, stringsAsFactors=FALSE, check.names=FALSE)
-  })
-  x <- do.call(rbind, all)
-  # One independent block is one validation seed; models remain separate here.
-  by_seed <- aggregate(cbind(mse_difference,q95_difference,benchmark_mse,benchmark_q95,mse,q95) ~
-                         source_family + target_family + relation + scenario_id + model_id + engine + training_seed + validation_seed,
-                       x, mean)
+  seeds <- pg_seeds(mode)
+  # Consume one independent validation-seed file at a time. The seed-level
+  # summaries preserve the original aggregation keys and arithmetic means.
+  seed_tables <- vector('list',length(seeds))
+  for (i in seq_along(seeds)) {
+    p <- file.path(pg_score_root(source,target,seeds[[i]]),'scores.csv')
+    if (!file.exists(p)) stop('Missing portfolio score: ',p)
+    seed_data <- read.csv(p,stringsAsFactors=FALSE,check.names=FALSE)
+    seed_tables[[i]] <- aggregate(cbind(mse_difference,q95_difference,benchmark_mse,benchmark_q95,mse,q95) ~
+      source_family + target_family + relation + scenario_id + model_id + engine + training_seed + validation_seed,
+      seed_data,mean)
+    rm(seed_data)
+  }
+  by_seed <- do.call(rbind,seed_tables)
+  rm(seed_tables)
   summarize <- function(z, unit) {
     a <- t2_confirmatory_block_test(z$mse_difference, if (mode=='smoke') 20L else t2_confirmatory_bootstrap_B('full'),
                                     t2_seed(paste(source,target,unit,z$model_id[[1L]],'mse'), 12001L))
