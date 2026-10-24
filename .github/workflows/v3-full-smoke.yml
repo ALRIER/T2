@@ -1,4 +1,4 @@
-name: "T2 V3 - Full Preflight and Benchmark"
+name: "T2 V3 - Full Preflight and Benchmark" # numerical diagnostics and capacity v2
 on:
   workflow_dispatch:
   push:
