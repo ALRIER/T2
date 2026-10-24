@@ -1,3 +1,49 @@
+# Audit context is set only during V3 Monte Carlo matrix construction.
+t2_numeric_audit_start <- function(path, context=list()) {
+ options(t2.audit.path=path,t2.audit.context=context)
+ invisible(TRUE)
+}
+t2_numeric_audit_stop <- function() {
+ options(t2.audit.path=NULL,t2.audit.context=NULL)
+ invisible(TRUE)
+}
+t2_numeric_audit_log <- function(name, reason, iterations=NA_integer_, converged=FALSE) {
+ path<-getOption("t2.audit.path")
+ if(is.null(path))return(invisible(NULL))
+ dir.create(dirname(path),recursive=TRUE,showWarnings=FALSE)
+ ctx<-getOption("t2.audit.context",list())
+ vals<-c(list(estimator=name,reason=reason,iterations=iterations,converged=converged),ctx)
+ row<-as.data.frame(lapply(vals,function(x)if(length(x))as.character(x) else ""),stringsAsFactors=FALSE)
+ # Append CSV rows using an identical fixed field order across events.
+ row<-row[,c("estimator","reason","iterations","converged","stage","family","seed","n","scenario","replicate"),drop=FALSE]
+ utils::write.table(row,path,sep=",",row.names=FALSE,col.names=!file.exists(path),
+                    append=file.exists(path),qmethod="double")
+ invisible(NULL)
+}
+t2_rlm_audited <- function(x,psi,k=NULL,label) {
+ warnings<-character()
+ fit<-tryCatch(withCallingHandlers({
+   args<-list(formula=x~1,psi=psi,scale.est="MAD",maxit=100L,na.action=na.omit)
+   if(!is.null(k))args$k<-k
+   do.call(MASS::rlm,args)
+ },warning=function(w) {
+   warnings<<-c(warnings,conditionMessage(w))
+   invokeRestart("muffleWarning")
+ }),error=function(e)e)
+ if(inherits(fit,"error")) {
+  t2_numeric_audit_log(label,paste0("error: ",conditionMessage(fit)))
+  return(stats::median(x,na.rm=TRUE))
+ }
+ val<-as.numeric(stats::coef(fit)[1L])
+ converged<-isTRUE(fit$converged)
+ if(!converged||length(warnings)||!is.finite(val))
+  t2_numeric_audit_log(label,
+    if(length(warnings))paste(warnings,collapse=" | ") else
+      if(!converged)"maxit_no_convergence" else "nonfinite_coefficient",
+    iterations=length(fit$conv),converged=converged)
+ if(!is.finite(val))stats::median(x,na.rm=TRUE) else val
+}
+
 # Source registry: historical NEST26. These functions remain scientifically unchanged.
 .qs3 <- function(x) {
   stats::quantile(x, probs = c(0.25, 0.50, 0.75), names = FALSE, type = 8, na.rm = TRUE)
@@ -34,25 +80,8 @@ trimean_safe <- function(x) {
   x <- as.numeric(x); q <- .qs3(x); (q[1] + 2*q[2] + q[3]) / 4
 }
 
-huber_mean_safe <- function(x) {
-  x <- as.numeric(x)
-  out <- tryCatch({
-    fit <- MASS::rlm(x ~ 1, psi = MASS::psi.huber, scale.est = "MAD",
-                     maxit = 50, na.action = na.omit)
-    as.numeric(coef(fit)[1])
-  }, error = function(e) NA_real_)
-  if (!is.finite(out)) stats::median(x, na.rm = TRUE) else out
-}
-
-biweight_mean_safe <- function(x) {
-  x <- as.numeric(x)
-  out <- tryCatch({
-    fit <- MASS::rlm(x ~ 1, psi = MASS::psi.bisquare, scale.est = "MAD",
-                     maxit = 50, na.action = na.omit)
-    as.numeric(coef(fit)[1])
-  }, error = function(e) NA_real_)
-  if (!is.finite(out)) stats::median(x, na.rm = TRUE) else out
-}
+huber_mean_safe <- function(x) t2_rlm_audited(as.numeric(x),MASS::psi.huber,label="huber")
+biweight_mean_safe <- function(x) t2_rlm_audited(as.numeric(x),MASS::psi.bisquare,label="biweight")
 
 finite_numeric <- function(x) {
   x <- as.numeric(x)
@@ -95,16 +124,8 @@ catoni_mean_safe <- function(x, alpha = 0.20, maxit = 100L, tol = 1e-08) {
   if (!is.finite(out)) stats::median(x) else out
 }
 
-huber_tuned_mean_safe <- function(x, k = 1.345) {
-  x <- finite_numeric(x)
-  if (!length(x)) return(NA_real_)
-  out <- tryCatch({
-    fit <- MASS::rlm(x ~ 1, psi = MASS::psi.huber, k = k,
-                     scale.est = "MAD", maxit = 50, na.action = na.omit)
-    as.numeric(stats::coef(fit)[1])
-  }, error = function(e) NA_real_)
-  if (!is.finite(out)) stats::median(x) else out
-}
+huber_tuned_mean_safe <- function(x,k=1.345)
+ t2_rlm_audited(finite_numeric(x),MASS::psi.huber,k=k,label=paste0("huber_k",k))
 
 ESTIMATOR_REGISTRY <- list(
   mean        = function(x) base::mean(x, na.rm = TRUE),
