@@ -1,0 +1,74 @@
+name: "T2 V3 - Monte Carlo Production Only"
+on:
+  push:
+    branches: [t2-hpo-redesign-v1]
+    paths: ['.github/workflows/v3-montecarlo-production.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: t2-v3-mc-production
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          families = ['normal','lognormal','weibull','invgauss','exgaussian','exwald']
+          cases = [
+            dict(role=role,family=family,seed=seed,n=n)
+            for role, seeds, sizes in [
+              ('discovery',range(0,10),[1000]),
+              ('heldout',range(10,15),[200,1000,3000]),
+              ('stress',range(15,20),[200,1000,3000])
+            ]
+            for family in families for seed in seeds for n in sizes
+          ]
+          assert len(cases)==240 and len({(x['role'],x['family'],x['seed'],x['n']) for x in cases})==240
+          print('matrix='+json.dumps({'include':cases},separators=(',',':')))
+          PY
+  monte-carlo:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      T2_V3_REPS: "500"
+      T2_V3_SCENARIOS: "120"
+      T2_MC_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate runtime
+        run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
+      - name: Run V3 Monte Carlo partition
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_montecarlo_stage.R "${{ matrix.role }}" "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.n }}"
+      - name: Produce SHA256 manifest
+        if: always()
+        shell: bash
+        run: |
+          if test -d artifacts/mc_v3_real26; then
+            find artifacts/mc_v3_real26 -type f -print0 | sort -z | xargs -0 -r sha256sum > artifacts/mc_v3_real26/SHA256SUMS
+          fi
+      - name: Upload partition results for manual local backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc-v3-${{ matrix.role }}-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/mc_v3_real26/
+          retention-days: 90
+          if-no-files-found: warn
