@@ -1,9 +1,5 @@
 t2_run_discovery <- function(data,mode,shard,engine='all'){
- if(is.null(data$scenarios)) {
-   if(is.null(data$family)||is.null(data$seed_index)||is.null(data$n)||is.null(data$replications))
-     stop('Monte Carlo reference is incomplete')
-   data<-t2_canonical_mc(mode,data$family,data$seed_index,data$n,data$replications)
- }
+ data <- t2_load_mc_for_discovery(data, mode)
  cfg<-ga_config
  if(mode=='smoke'){cfg$population<-8L;cfg$generations<-2L;cfg$patience<-2L;cfg$bootstrap_B<-100L}
  s<-data$scenarios
