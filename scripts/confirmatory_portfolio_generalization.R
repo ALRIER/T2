@@ -14,6 +14,7 @@ if (!mode %in% c('smoke', 'full')) stop('MODE must be smoke or full')
 
 source('R/00_shared/load_all.R'); t2_load('.')
 source('R/00_shared/pipeline.R')
+source('R/06_confirmatory/immutable_provenance.R')
 t2_check_runtime('.', strict = TRUE)
 
 pg_root <- function() Sys.getenv('T2_PORTFOLIO_ROOT', unset = 'artifacts/confirmatory_portfolio')
@@ -90,6 +91,10 @@ score_portfolio <- function(source, target, seed, mode) {
   if (mode == 'smoke') tab <- tab[seq_len(min(3L, nrow(tab))), , drop = FALSE]
   canonical <- load_canonical(target, seed)
   source_models <- t2_confirmatory_load_models(source)
+  trace_root <- file.path(pg_score_root(source,target,seed), 'provenance')
+  t2_trace_t(canonical, target, seed, as.integer(pg_value('sample_n')),
+             as.integer(pg_value('replications')), trace_root)
+  t2_trace_w(source_models$manifest, trace_root)
   baseline <- source_models$reference[[1L]]
   rows <- list(); k <- 0L
   for (scenario_id in tab$scenario_id) {
