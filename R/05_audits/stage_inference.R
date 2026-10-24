@@ -19,16 +19,21 @@ apply_stage_fdr <- function(df,stage,alpha=ga_config$fdr_primary,group_cols=c('s
 }
 # Fixed-weight, paired squared error comparison against the benchmark of interest.
 # Bootstrap CI for q95 is descriptive until a valid, preregistered null test exists.
-assess_frozen_models <- function(T,models,target,baseline_id='mean',stage='heldout',alpha=.05) {
+assess_frozen_models <- function(T,models,target,baseline_id='mean',stage='heldout',alpha=.05,bootstrap_B=500L,bootstrap_seed=1L) {
  stopifnot(baseline_id %in% vapply(models,function(x)x$id,character(1)))
  baseline<-models[[which(vapply(models,function(x)x$id==baseline_id,logical(1)))[1]]]
  bs<-(model_predict(T,baseline)-target)^2
- rows<-lapply(models,function(model){
+ rows<-lapply(seq_along(models),function(i){
+   model<-models[[i]]
    se<-(model_predict(T,model)-target)^2
    a<-paired_superiority_test(se,bs)
+   ci<-t2_q95_ci_v3(se,bs,B=bootstrap_B,seed=bootstrap_seed+i)
    data.frame(model=model$id,benchmark=baseline_id,metric='mse',mse=mean(se),
               q95=unname(quantile(se,.95,type=8)),p_value=a$p_value,
-              difference=a$mean_difference,mcse=a$mcse)
+              difference=a$mean_difference,mcse=a$mcse,
+              q95_lower=ci$q95_lower,q95_upper=ci$q95_upper,
+              q95_delta=ci$delta,q95_delta_lower=ci$delta_lower,
+              q95_delta_upper=ci$delta_upper,bootstrap_B=bootstrap_B)
  })
  apply_stage_fdr(do.call(rbind,rows),stage=stage,alpha=alpha)
 }
