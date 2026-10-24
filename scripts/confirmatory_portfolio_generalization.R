@@ -96,27 +96,50 @@ score_portfolio <- function(source, target, seed, mode) {
              as.integer(pg_value('replications')), trace_root)
   t2_trace_w(source_models$manifest, trace_root)
   baseline <- source_models$reference[[1L]]
-  rows <- list(); k <- 0L
-  for (scenario_id in tab$scenario_id) {
-    sc <- canonical$scenarios[[as.integer(scenario_id)]]
-    bse <- (model_predict(sc$T, baseline) - sc$target)^2
-    for (id in names(source_models$candidates)) {
-      model <- source_models$candidates[[id]]; se <- (model_predict(sc$T, model) - sc$target)^2
-      k <- k + 1L
-      rows[[k]] <- data.frame(source_family=source, target_family=target,
-        relation=pg_relation(source,target), validation_seed=as.integer(seed), scenario_id=as.integer(scenario_id),
-        model_id=id, engine=sub(sprintf('^%s_', source), '', sub('_train[0-9]+$', '', id)),
-        training_seed=as.integer(sub('.*_train', '', id)),
-        mse=mean(se), q95=unname(quantile(se,.95,type=8)), benchmark_mse=mean(bse),
-        benchmark_q95=unname(quantile(bse,.95,type=8)), mse_difference=mean(se)-mean(bse),
-        q95_difference=unname(quantile(se,.95,type=8)-quantile(bse,.95,type=8)), n_rep=length(se), stringsAsFactors=FALSE)
+  root <- pg_score_root(source,target,seed)
+  dir.create(root,recursive=TRUE,showWarnings=FALSE)
+  final <- file.path(root,'scores.csv')
+  staged <- paste0(final,'.inprogress')
+  if (file.exists(staged)) unlink(staged)
+  complete <- FALSE
+  on.exit(if (!complete && file.exists(staged)) unlink(staged),add=TRUE)
+  ids <- names(source_models$candidates)
+  batch <- t2_batch_size(length(ids),'T2_MODEL_BATCH_SIZE',32L)
+  scenario_batch <- t2_batch_size(nrow(tab),'T2_SCENARIO_BATCH_SIZE',8L)
+  for (sc_ix in t2_batch_indices(nrow(tab),scenario_batch)) {
+    for (i in sc_ix) {
+      scenario_id <- tab$scenario_id[[i]]
+      sc <- canonical$scenarios[[as.integer(scenario_id)]]
+      bse <- (model_predict(sc$T,baseline)-sc$target)^2
+      bm <- mean(bse)
+      bq <- unname(quantile(bse,.95,type=8))
+      for (ix in t2_batch_indices(length(ids),batch)) {
+        weights <- do.call(cbind,lapply(source_models$candidates[ix],function(m)m$weights))
+        predictions <- sc$T %*% weights
+        errors <- sweep(predictions,1L,sc$target,'-')^2
+        mse <- colMeans(errors)
+        q95 <- apply(errors,2L,quantile,probs=.95,type=8,names=FALSE)
+        selected <- ids[ix]
+        result <- data.frame(source_family=source,target_family=target,
+          relation=pg_relation(source,target),validation_seed=as.integer(seed),
+          scenario_id=as.integer(scenario_id),model_id=selected,
+          engine=sub(sprintf('^%s_',source),'',sub('_train[0-9]+$','',selected)),
+          training_seed=as.integer(sub('.*_train','',selected)),
+          mse=mse,q95=q95,benchmark_mse=bm,benchmark_q95=bq,
+          mse_difference=mse-bm,q95_difference=q95-bq,
+          n_rep=nrow(sc$T),stringsAsFactors=FALSE)
+        write.table(result,staged,sep=',',row.names=FALSE,
+                    col.names=!file.exists(staged),append=file.exists(staged),
+                    quote=TRUE,na='')
+      }
     }
   }
-  out <- do.call(rbind, rows); root <- pg_score_root(source,target,seed)
-  dir.create(root, recursive=TRUE, showWarnings=FALSE)
-  t2_write_csv(out, file.path(root, 'scores.csv'))
-  writeLines('portfolio_score COMPLETE', file.path(root, 'score.status'))
-  invisible(out)
+  if (!file.exists(staged) || file.info(staged)$size==0L)
+    stop('No scientific scores generated')
+  if (!file.rename(staged,final)) stop('Failed atomic score publication')
+  complete <- TRUE
+  writeLines('portfolio_score COMPLETE',file.path(root,'score.status'))
+  invisible(final)
 }
 
 infer_portfolio <- function(source, target, mode) {
