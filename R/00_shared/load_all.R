@@ -8,7 +8,7 @@ t2_load <- function(root='.') {
  'R/04_real_datasets/frozen_realworld.R','R/04_real_datasets/realworld_integrated.R','R/04_real_datasets/dataset_pipeline.R','R/04_real_datasets/realworld_adapter.R',
  'R/04_real_datasets/legacy_realworld_confirmatory.R',
  'R/05_audits/precision_and_checks.R','R/05_audits/shared_inference.R','R/05_audits/hierarchical_taxonomy.R',
- 'R/05_audits/stage_inference.R','R/05_audits/q95_and_stage_fdr.R','R/05_audits/stress_runner.R')
+ 'R/05_audits/q95_ci_v3.R','R/05_audits/stage_inference.R','R/05_audits/q95_and_stage_fdr.R','R/05_audits/stress_runner.R')
  for(f in files)source(file.path(root,f),local=.GlobalEnv)
  confirmatory <- file.path(root, 'R/06_confirmatory/confirmatory.R')
  if (file.exists(confirmatory)) source(confirmatory, local = .GlobalEnv)
