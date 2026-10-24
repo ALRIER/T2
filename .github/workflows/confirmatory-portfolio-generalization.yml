@@ -8,6 +8,11 @@ on:
         description: 'Existing Linux R runtime image pinned by immutable digest (registry/image@sha256:...)'
         required: true
         type: string
+      scientific_run_id:
+        description: 'Optional Actions run ID with t2-t-heldout family-seed scientific artifacts'
+        required: false
+        default: ''
+        type: string
       validation_run_id:
         description: 'GitHub Actions run ID containing immutable validation-family RDS artifacts'
         required: true
@@ -66,7 +71,17 @@ jobs:
       - uses: actions/download-artifact@v5
         with: {name: t2-portfolio-manifest, path: artifacts/confirmatory_portfolio/manifest/}
       # Consume the scientific matrix only; operational checkpoints stay in source artifacts.
+      - name: Download selectively published scientific scenario artifact
+        if: ${{ inputs.scientific_run_id != '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: t2-t-heldout-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
+          path: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.target_family }}/seed${{ matrix.validation_seed }}/n1000_r500.rds.scenarios/
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.scientific_run_id }}
       - name: Download source artifact for target-family validation block
+        if: ${{ inputs.scientific_run_id == '' }}
         uses: actions/download-artifact@v5
         with:
           name: validation-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
@@ -75,6 +90,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.VALIDATION_RUN_ID }}
       - name: Validate canonical validation block
+        if: ${{ inputs.scientific_run_id == '' }}
         env:
           TARGET_FAMILY: ${{ matrix.target_family }}
           VALIDATION_SEED: ${{ matrix.validation_seed }}
