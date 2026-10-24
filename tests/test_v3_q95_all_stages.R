@@ -1,0 +1,20 @@
+#!/usr/bin/env Rscript
+source("R/00_shared/load_all.R");t2_load(".")
+set.seed(72)
+T<-matrix(rnorm(120L*26L),nrow=120L,ncol=26L)
+colnames(T)<-ESTIMATOR_NAMES
+W<-matrix(0,26L,2L);W[1,1]<-1;W[2,2]<-1
+stopifnot(exists("t2_q95_ci_v3"),exists("assess_frozen_models"))
+h<-evaluate_frozen_with_q95_ci(T,W,0,B=200L,seed=7L)
+stopifnot(nrow(h$q95_uncertainty)==2L,
+          all(is.finite(h$q95_uncertainty$q95_lower)))
+r<-realworld_frozen_with_q95_ci(T,W,0,B=200L,seed=7L)
+stopifnot(nrow(r$q95_uncertainty)==2L,
+          r$target_type=="full_dataset_mean_proxy")
+m<-list(new_frozen_model("mean",component="mean"),
+        new_frozen_model("median",component="median"))
+a<-assess_frozen_models(T,m,0,bootstrap_B=200L,bootstrap_seed=7L)
+stopifnot(nrow(a)==2L,all(c("q95_lower","q95_delta_upper")%in%names(a)))
+b<-stress_frozen_q95_ci(T,m,0,B=200L,seed=7L)
+stopifnot(nrow(b)==2L,all(is.finite(b$q95_upper)))
+cat("V3_Q95_ALL_STAGES_PASS\n")
