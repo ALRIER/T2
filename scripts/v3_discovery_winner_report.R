@@ -31,3 +31,34 @@ write.csv(out,'artifacts/discovery_analysis/training_candidates.csv',row.names=F
 agg <- aggregate(cbind(mse,q95)~family+engine+goal,out,mean)
 write.csv(agg,'artifacts/discovery_analysis/training_summary.csv',row.names=FALSE)
 cat('V3_DISCOVERY_WINNER_REPORT_PASS',nrow(out),'rows\n')
+
+# Component-level weight contribution and seed stability. These are
+# descriptive quantities, not causal importance or inferential significance.
+component_rows <- list(); ix <- 0L
+for(family in families) for(seed in 0:9) {
+  fit <- readRDS(file.path(root,family,sprintf('seed%02d',seed),'discovery.rds'))
+  for(engine in names(fit$engines)) {
+    z <- fit$engines[[engine]]
+    O <- as.matrix(z$objectives);W <- as.matrix(z$weights)
+    scales <- pmax(colMeans(abs(O)),1e-12)
+    chosen <- c(mse=which.min(O[,1L]),q95=which.min(O[,2L]),
+                balanced=which.min(rowSums(sweep(O,2L,scales,'/'))))
+    for(goal in names(chosen)){
+      w <- W[,chosen[[goal]]]
+      for(j in seq_along(w)) {
+        ix <- ix + 1L
+        component_rows[[ix]] <- data.frame(family=family,seed=seed,
+          engine=engine,goal=goal,component=ESTIMATOR_NAMES[j],
+          weight=w[j],stringsAsFactors=FALSE)
+      }
+    }
+  }
+}
+weights <- do.call(rbind,component_rows)
+write.csv(weights,'artifacts/discovery_analysis/component_weights_by_seed.csv',row.names=FALSE)
+stat <- aggregate(weight~family+engine+goal+component,weights,
+                  function(w)c(mean=mean(w),sd=stats::sd(w),
+                               min=min(w),max=max(w)))
+summary_weights <- data.frame(stat[1:4],stat$weight,check.names=FALSE)
+write.csv(summary_weights,'artifacts/discovery_analysis/component_weight_stability.csv',row.names=FALSE)
+cat('V3_DISCOVERY_WEIGHT_STABILITY_PASS',nrow(summary_weights),'rows\n')
