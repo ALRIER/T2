@@ -132,6 +132,11 @@ score_portfolio <- function(source, target, seed, mode) {
       sc <- if (use_store) {
         t2_read_rds(file.path(store_root,selected_manifest$filename[[i]]))
       } else canonical$scenarios[[i]]
+      if (!is.matrix(sc$T) || !is.numeric(sc$T) ||
+          !identical(dim(sc$T),c(as.integer(pg_value('replications')),26L)) ||
+          any(!is.finite(sc$T)) || !is.finite(sc$target) ||
+          !identical(as.integer(sc$scenario_id),as.integer(scenario_id)))
+        stop('Scientific scenario content mismatch: ',scenario_id)
       bse <- (model_predict(sc$T,baseline)-sc$target)^2
       bm <- mean(bse)
       bq <- unname(quantile(bse,.95,type=8))
