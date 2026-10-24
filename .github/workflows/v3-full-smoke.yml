@@ -1,0 +1,69 @@
+name: "T2 V3 - Full Preflight and Benchmark"
+on:
+  workflow_dispatch:
+  push:
+    branches: [t2-hpo-redesign-v1]
+    paths:
+      - '.github/workflows/v3-full-smoke.yml'
+      - 'scripts/v3_full_smoke.R'
+permissions:
+  contents: read
+  packages: read
+jobs:
+  full-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      T2_MC_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare diagnostics
+        run: mkdir -p artifacts/v3_full_smoke
+      - name: Verify Docker image and runtime
+        run: |
+          docker version > artifacts/v3_full_smoke/docker_version.txt
+          bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R 2>&1 | tee artifacts/v3_full_smoke/environment.log
+      - name: Contract and estimator tests
+        run: |
+          set -o pipefail
+          for test in tests/test_v3_no_legacy_calls.R tests/test_v3_seed_plan.R tests/test_revised_estimator_library.R tests/test_v3_generator_contract.R; do
+            bash scripts/run_r_in_container.sh Rscript "$test" 2>&1 | tee -a artifacts/v3_full_smoke/contracts.log
+          done
+      - name: Full three-stage smoke and checkpoint recovery
+        run: |
+          set -o pipefail
+          /usr/bin/time -v -o artifacts/v3_full_smoke/resources.txt bash scripts/run_r_in_container.sh Rscript scripts/v3_full_smoke.R 2>&1 | tee artifacts/v3_full_smoke/smoke.log
+      - name: Backup export, SHA256 and restore verification
+        run: |
+          set -euo pipefail
+          cd artifacts/v3_full_smoke
+          tar -czf v3_smoke_backup.tar.gz data
+          find data -type f -print0 | sort -z | xargs -0 sha256sum > integrity_manifest.sha256
+          mkdir restored
+          tar -xzf v3_smoke_backup.tar.gz -C restored
+          (cd restored && sha256sum -c ../integrity_manifest.sha256) > restore_verification.log
+          printf '{"backup":"PASS","sha256":"PASS","restore":"PASS"}\n' > backup_report.json
+          du -sh data v3_smoke_backup.tar.gz > storage.txt
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '## T2 V3 Full Smoke'
+            echo 'Successful phases report PASS; failed steps stop the run.'
+            if test -f artifacts/v3_full_smoke/smoke_report.json; then cat artifacts/v3_full_smoke/smoke_report.json; fi
+            if test -f artifacts/v3_full_smoke/backup_report.json; then cat artifacts/v3_full_smoke/backup_report.json; fi
+            if test -f artifacts/v3_full_smoke/storage.txt; then cat artifacts/v3_full_smoke/storage.txt; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish diagnostics even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t2-v3-full-smoke-diagnostics-${{ github.run_id }}
+          path: artifacts/v3_full_smoke/
+          retention-days: 30
+          if-no-files-found: warn
