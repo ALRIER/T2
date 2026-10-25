@@ -61,6 +61,7 @@ for(g in panels)for(metric in c('mse','q95')) {
 if(!length(res))stop('No independent parent-level hypotheses')
 v<-do.call(rbind,res)
 v$q_BH<-p.adjust(v$p_value,'BH')
+v$p_holm<-p.adjust(v$p_value,'holm')
 v$supported<-v$gain>0 & v$ci_lower>0 & v$q_BH<=.05
 key<-paste(v$family,v$proximity_layer,v$model,sep=':')
 m<-v$metric=='mse';q<-v$metric=='q95'
@@ -69,6 +70,35 @@ qok<-v$supported[match(key,paste(v$family[q],v$proximity_layer[q],v$model[q],sep
 if(anyNA(mok)||anyNA(qok))stop('Incomplete Real World taxonomy pair')
 v$taxonomy<-ifelse(mok&qok,'mse_and_q95_bh_fdr',ifelse(mok,'mse_only_bh_fdr',
  ifelse(qok,'q95_only_bh_fdr','no_supported_gain')))
+# Joint null diagnostics require the same parent-level BH taxonomy, not
+# isolated unadjusted null contrasts. Kept separate from scientific claims.
+set.seed(t2_seed('B3_RW_parent_joint_null',27181L))
+Bnull<-500L
+hyp<-split(parents,interaction(parents$family,parents$proximity_layer,parents$model,drop=TRUE))
+null_rej<-numeric(Bnull)
+for(b in seq_len(Bnull)){
+  null_p<-numeric(0)
+  for(h in hyp){
+    if(nrow(h)<2L)next
+    flips<-sample(c(-1,1),nrow(h),replace=TRUE)
+    for(metric in c('mse','q95')){
+      x<-h[[paste0(metric,'_gain')]]*flips
+      if(!is.finite(sd(x))||sd(x)==0){p<-if(mean(x)>0)0 else 1}
+      else p<-pt(-mean(x)/(sd(x)/sqrt(length(x))),df=length(x)-1L)
+      null_p<-c(null_p,p)
+    }
+  }
+  if(!length(null_p))stop('Missing parent null family')
+  null_rej[b]<-sum(p.adjust(null_p,'BH')<=.05)
+}
+write.csv(data.frame(null_iteration=seq_len(Bnull),discoveries=null_rej,
+ any_false_discovery=null_rej>0),file.path(out,'parent_null_calibration_T2_V3_B3.csv'),row.names=FALSE)
+writeLines(c(sprintf('null_worlds=%d',Bnull),
+ sprintf('empirical_global_null_FWER=%.6f',mean(null_rej>0)),
+ sprintf('mean_global_null_discoveries=%.6f',mean(null_rej)),
+ 'Diagnostic only: parent sign symmetry and jointly adjusted BH p-values',
+ 'Does not emulate independent collection, profile matching, or model selection'),
+ file.path(out,'parent_null_scope_T2_V3_B3.txt'))
 write.csv(v,file.path(out,'parent_inference_T2_V3_B3.csv'),row.names=FALSE)
 writeLines(c('Real-world targets are empirical proxies, not known population truths',
   'Repeated depth and sample sizes are aggregated within independent parent datasets',
