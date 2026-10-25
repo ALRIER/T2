@@ -1,0 +1,52 @@
+#!/usr/bin/env Rscript
+# T2 V3 B3: parent-level Real World inference
+a<-commandArgs(trailingOnly=TRUE)
+root<-if(length(a))a[[1]] else 'artifacts/realworld_T2_V3_B3'
+source('R/00_shared/load_all.R');t2_load('.')
+source('R/00_shared/pipeline.R')
+paths<-list.files(root,'^scores_T2_V3_B3[.]csv$',recursive=TRUE,full.names=TRUE)
+if(!length(paths))stop('Missing real-world scores')
+all<-do.call(rbind,lapply(paths,read.csv))
+key<-interaction(all$dataset_id,all$family,all$training_seed,all$sample_n,all$depth,drop=TRUE)
+rows<-lapply(split(all,key),function(d) {
+  ref<-if(d$empirical_profile[1]=='normal_like')'mean' else if(d$empirical_profile[1]=='empirical_unknown')'huber' else 'trimmed20'
+  base<-d[d$model==ref,,drop=FALSE]
+  learn<-d[!d$model%in%ESTIMATOR_NAMES,,drop=FALSE]
+  if(nrow(base)!=1L||nrow(learn)!=4L)stop('Invalid comparison structure')
+  data.frame(parent_dataset_id=learn$parent_dataset_id,family=learn$family,
+    proximity_layer=learn$proximity_layer,model=learn$model,reference=ref,
+    mse_gain=base$mse-learn$mse,q95_gain=base$q95-learn$q95)
+})
+d<-do.call(rbind,rows)
+parents<-aggregate(cbind(mse_gain,q95_gain)~parent_dataset_id+family+proximity_layer+model+reference,d,mean)
+out<-file.path(root,'aggregation_T2_V3_B3');dir.create(out,recursive=TRUE,showWarnings=FALSE)
+write.csv(parents,file.path(out,'parent_effects_T2_V3_B3.csv'),row.names=FALSE)
+panels<-split(parents,interaction(parents$family,parents$proximity_layer,parents$model,drop=TRUE))
+res<-list()
+for(g in panels)for(metric in c('mse','q95')) {
+  x<-g[[paste0(metric,'_gain')]];nn<-length(x)
+  if(nn<2L)next
+  set.seed(t2_seed(paste(g$family[1],g$proximity_layer[1],g$model[1],metric),17291L))
+  B<-2000L
+  bs<-replicate(B,mean(sample(x,nn,replace=TRUE)))
+  ci<-unname(quantile(bs,c(.025,.975),type=8))
+  se<-sd(x)
+  p<-if(se>0)pt(-mean(x)/(se/sqrt(nn)),df=nn-1L) else if(mean(x)>0)0 else 1
+  vals<-replicate(500L,mean(x*sample(c(-1,1),nn,replace=TRUE)))
+  np<-if(se>0)pt(-vals/(se/sqrt(nn)),df=nn-1L) else rep(1,length(vals))
+  res[[length(res)+1L]]<-data.frame(family=g$family[1],proximity_layer=g$proximity_layer[1],
+    model=g$model[1],reference=g$reference[1],metric=metric,n_parent=nn,
+    gain=mean(x),ci_lower=ci[1],ci_upper=ci[2],p_value=p,
+    null_method='parent_sign_symmetry',null_reps=length(np),null_fpr=mean(np<.05))
+}
+if(!length(res))stop('No independent parent-level hypotheses')
+v<-do.call(rbind,res)
+v$q_BH<-p.adjust(v$p_value,'BH')
+v$supported<-v$gain>0 & v$ci_lower>0 & v$q_BH<=.05
+write.csv(v,file.path(out,'parent_inference_T2_V3_B3.csv'),row.names=FALSE)
+writeLines(c('Real-world targets are empirical proxies, not known population truths',
+  'Repeated depth and sample sizes are aggregated within independent parent datasets',
+  'False-positive rate is a diagnostic under parent sign symmetry',
+  'BH false discovery rate across the complete exported parent-level test panel'),
+  file.path(out,'scientific_scope_T2_V3_B3.txt'))
+cat('T2_V3_B3_REALWORLD_PARENT_PASS',nrow(v),'hypotheses\n')
