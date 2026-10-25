@@ -23,7 +23,10 @@ for(training_seed in 0:9) {
   if(!file.exists(source_file))stop('Missing frozen Discovery: ',source_file)
   fit<-t2_read_rds(source_file)
   if(length(fit$engines)!=4L)stop('Incomplete frozen engine registry')
-  models<-fit$models
+  baselines<-lapply(ESTIMATOR_NAMES,function(nm)new_frozen_model(nm,component=nm))
+  learned<-Filter(function(m)!is.null(m$weights),fit$models)
+  models<-c(baselines,learned)
+  if(length(models)!=30L)stop('B3 requires all 26 benchmarks and four frozen learners')
   if(length(models)<8L || anyDuplicated(vapply(models,function(m)m$id,character(1))))
     stop('Invalid frozen candidate registry')
   z<-t2_v3_stream_scores('stress',family,seed,n,models,reps=500L,selected=0:120)
@@ -34,7 +37,7 @@ for(training_seed in 0:9) {
   write.table(z,outpath,append=!first,row.names=FALSE,col.names=first,
               sep=',',quote=TRUE)
   first<-FALSE
-  rm(fit,models,z);invisible(gc(verbose=FALSE))
+  rm(fit,models,z,learned,baselines);invisible(gc(verbose=FALSE))
   t2_b3_ram_guard('stress',out,paste0('train_',training_seed))
   cat('V3_STRESS_SCORE_PASS',family,'train',training_seed,'stress',seed,'n',n,'rows',nrow(z),'\\n')
 }
