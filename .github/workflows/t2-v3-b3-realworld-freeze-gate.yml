@@ -11,4 +11,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 scripts/t2_v3_b3_realworld_freeze_smoke.py
+      - name: Check B3 newly selected parents and workflow contracts
+        run: python3 scripts/t2_v3_b3_realworld_freeze_smoke.py
