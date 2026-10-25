@@ -64,7 +64,9 @@ for(j in seq_len(nrow(profile))) {
   for(depth in names(depths)) {
   xx<-depths[[depth]]
   for(n in if(smoke)200L else c(200L,1000L)) {
-    R<-if(smoke)100L else 500L
+    # Number of bootstrap children per parent/depth/sample-size; frozen by run env.
+    R<-if(smoke)100L else as.integer(Sys.getenv('T2_B3_RW_CHILD_REPS','500'))
+    if(!is.finite(R)||R<100L||R>10000L)stop('Children must be in [100,10000]')
     set.seed(t2_seed(paste('B3',family,id,depth,n),18517L))
     T<-matrix(NA_real_,R,26L,dimnames=list(NULL,ESTIMATOR_NAMES))
     for(i in seq_len(R))T[i,]<-component_vector(sample(xx,n,replace=TRUE))
@@ -82,7 +84,7 @@ for(j in seq_len(nrow(profile))) {
       z<-score_model_set(T,models,mean(xx))
       z$dataset_id<-id;z$parent_dataset_id<-profile$parent_dataset_id[j]
       z$family<-family;z$training_seed<-k;z$sample_n<-n
-      z$depth<-depth;z$target_type<-'depth_parent_empirical_mean_proxy'
+      z$child_bootstrap_reps<-R;z$depth<-depth;z$target_type<-'depth_parent_empirical_mean_proxy'
       z$domain<-profile$domain[j];z$source_url<-profile$source_url[j]
       z$empirical_profile<-profile$empirical_profile[j]
       z$proximity_layer<-rw_proximity(family,profile$empirical_profile[j])
@@ -91,6 +93,7 @@ for(j in seq_len(nrow(profile))) {
       set.seed(t2_seed(paste('B3_infer',family,id,depth,n,k),19000L))
       inf<-t2_v3_infer_scenario(sc,models,k,j,n,B=if(smoke)50L else 500L,reference=bench)
       inf$dataset_id<-id;inf$family<-family;inf$depth<-depth
+      inf$child_bootstrap_reps<-R
       inf$parent_dataset_id<-profile$parent_dataset_id[j]
       inf$proximity_layer<-rw_proximity(family,profile$empirical_profile[j])
       inf$target_type<-'depth_parent_empirical_mean_proxy'
@@ -113,6 +116,7 @@ for(j in seq_len(nrow(profile))) {
 }
 writeLines(c('Prueba T2 version 3 B3',
              'Full, body 10-90 and upper-tail subsets retain separate empirical mean proxies',
+             sprintf('Bootstrap children per parent/depth/N: %s',if(smoke)100L else Sys.getenv('T2_B3_RW_CHILD_REPS','500')),
              'Repeated samples from the same parent dataset are dependent',
              'Real-world false-positive rate is not identifiable without a valid null-generating mechanism',
              'Per-dataset paired intervals are descriptive; parent-level confirmatory aggregation is separate',
