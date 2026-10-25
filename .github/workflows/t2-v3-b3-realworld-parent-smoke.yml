@@ -1,4 +1,4 @@
-name: T2 V3 B3 Real World Parent Aggregation Smoke
+name: T2 V3 B3 Real World Parent Final Gate 5
 on:
   push:
     branches: [t2-v3-contract-adapter-20261024]
