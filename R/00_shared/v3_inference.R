@@ -66,27 +66,43 @@ t2_v3_adjust_inference <- function(z,alpha=.05) {
   z
 }
 
-# Diagnostic null calibration: randomly swap candidate/reference error labels
-# per Monte Carlo replicate under the exchangeability null. It estimates the
-# type-I rejection rate of the unadjusted one-sided paired test.
-t2_v3_null_fpr <- function(sc, models, train_seed, eval_seed, Bnull=100L, alpha=.05) {
+# Paired label-exchangeability calibration under a precisely declared null:
+# for each replicate reference/candidate errors are exchangeable. Per metric
+# p-values are empirical ranks in the same null world; each simulated world
+# is corrected by Holm across *both metrics and all candidate contrasts*.
+t2_v3_null_fpr <- function(sc, models, train_seed, eval_seed, Bnull=500L, alpha=.05) {
+  stopifnot(Bnull>=30L,alpha>0,alpha<1)
   E<-vapply(models,function(m)(model_predict(sc$T,m)-sc$target)^2,numeric(nrow(sc$T)))
   colnames(E)<-vapply(models,function(m)m$id,character(1))
-  base<-E[,'median'];R<-length(base)
-  result<-lapply(setdiff(colnames(E),'median'),function(nm) {
-    d<-base-E[,nm]
-    rejections<-rep(FALSE,Bnull)
-    for(b in seq_len(Bnull)) {
-      swapped<-sample(c(-1,1),R,replace=TRUE)*d
-      sd0<-stats::sd(swapped)
-      p<-if(sd0>0) stats::pt(-mean(swapped)/(sd0/sqrt(R)),df=R-1L) else 1
-      rejections[b]<-is.finite(p)&&p<alpha
+  if(!'median'%in%colnames(E))stop('Null reference median absent')
+  baseline<-E[,'median'];ids<-setdiff(colnames(E),'median')
+  R<-length(baseline)
+  nullstats<-matrix(NA_real_,nrow=Bnull,ncol=length(ids)*2L,
+    dimnames=list(NULL,as.vector(rbind(paste0(ids,'_mse'),paste0(ids,'_q95')))))
+  for(j in seq_along(ids)){
+    e<-E[,ids[j]]
+    for(b in seq_len(Bnull)){
+      swap<-sample.int(2L,R,replace=TRUE)==1L
+      ref<-ifelse(swap,e,baseline)
+      alt<-ifelse(swap,baseline,e)
+      nullstats[b,2L*j-1L]<-mean(ref)-mean(alt)
+      nullstats[b,2L*j]<-as.numeric(stats::quantile(ref,.95,type=8))-
+        as.numeric(stats::quantile(alt,.95,type=8))
     }
-    data.frame(model=nm,reference='median',null_method='paired_random_swap',
-      nominal_alpha=alpha,null_reps=Bnull,false_positives=sum(rejections),
-      empirical_fpr=mean(rejections),training_seed=train_seed,
-      heldout_seed=eval_seed,scenario_id=sc$scenario_id,sample_n=R,
-      stringsAsFactors=FALSE)
-  })
-  do.call(rbind,result)
+  }
+  # Conservative permutation-rank p-values, including the evaluated world.
+  P<-apply(nullstats,2L,function(v) vapply(v,function(x)sum(v>=x)/Bnull,numeric(1)))
+  P<-matrix(P,nrow=Bnull,ncol=ncol(nullstats),dimnames=dimnames(nullstats))
+  adj<-t(apply(P,1L,stats::p.adjust,method='holm'))
+  fwer<-mean(rowSums(adj<=alpha)>0)
+  out<-data.frame(model=rep(ids,each=2L),
+    metric=rep(c('mse','q95'),length(ids)),reference='median',
+    nominal_alpha=alpha,null_reps=Bnull,
+    false_positives=colSums(adj<=alpha),
+    empirical_fpr=colMeans(adj<=alpha),
+    joint_familywise_fpr=fwer,
+    null_method='paired_label_exchangeability_Holm_both_metrics',
+    training_seed=train_seed,heldout_seed=eval_seed,
+    scenario_id=sc$scenario_id,sample_n=R,stringsAsFactors=FALSE)
+  out
 }
