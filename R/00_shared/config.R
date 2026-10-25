@@ -5,6 +5,7 @@ ga_config <- list(
  mad_scales=c(1.5,3,4.5,6,9,12,15,20,30),
  contamination_types=c('upper_tail','lower_tail','symmetric_t','point_mass','clustered_upper','clustered_symmetric','mixture_bimodal_near','mixture_bimodal_far'),
  population=150L, generations=80L, seeds=10L,
+ discovery_cv_folds=5L, discovery_cv_scheme='scenario_stratified_deterministic_v1',
  training_seed_indices=0:9, heldout_seed_index=10L, bootstrap_B=500L,
  patience=10L, early_stop_enabled=TRUE, improvement=.001, training_fraction=.8, batch_size=32L,
  objective_names=c('mse','q95'), fdr_primary=.05, fdr_sensitivity=.10,
