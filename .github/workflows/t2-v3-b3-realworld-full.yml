@@ -1,0 +1,126 @@
+name: T2 V3 B3 Real World Full Inferential Production
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: T2_V3_B3_realworld_inference
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.make.outputs.result }}
+    steps:
+      - id: make
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const audit=await github.rest.actions.getWorkflowRun({
+              owner:context.repo.owner,repo:context.repo.repo,run_id:40142001843});
+            const training=await github.rest.actions.getWorkflowRun({
+              owner:context.repo.owner,repo:context.repo.repo,run_id:40132811105});
+            if(audit.data.conclusion!=='success'||training.data.conclusion!=='success')
+              return core.setFailed('Frozen source runs not successful');
+            const a=await github.paginate(github.rest.actions.listWorkflowRunArtifacts,{
+              owner:context.repo.owner,repo:context.repo.repo,run_id:40142001843,per_page:100});
+            const batches=a.filter(x=>!x.expired && /^t2-v3-rw-audit-profile-[0-9]+$/.test(x.name))
+              .map(x=>Number(x.name.split('-').at(-1))).sort((x,y)=>x-y);
+            if(!batches.length)return core.setFailed('No immutable audited real-world profiles available');
+            const halves=[['normal','lognormal','weibull'],['invgauss','exgaussian','exwald']];
+            const include=batches.flatMap(batch=>halves.map(f=>({
+              batch:batch,f1:f[0],f2:f[1],f3:f[2]
+            })));
+            return JSON.stringify({include:include});
+  score:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: t2-v3-rw-audit-profile-${{ matrix.batch }}
+          run-id: 40142001843
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/realworld_regime_matched_v2
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-v3-discovery-${{ matrix.f1 }}-seed*
+          merge-multiple: true
+          run-id: 40132811105
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/discovery_v3
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-v3-discovery-${{ matrix.f2 }}-seed*
+          merge-multiple: true
+          run-id: 40132811105
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/discovery_v3
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-v3-discovery-${{ matrix.f3 }}-seed*
+          merge-multiple: true
+          run-id: 40132811105
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/discovery_v3
+      - name: Outcome-blind regime-matched real-world scoring
+        env:
+          F1: ${{ matrix.f1 }}
+          F2: ${{ matrix.f2 }}
+          F3: ${{ matrix.f3 }}
+          BATCH: ${{ matrix.batch }}
+        run: |
+          printf -v num '%03d' "$BATCH"
+          input="artifacts/realworld_regime_matched_v2/profile_batch_${num}"
+          for fam in "$F1" "$F2" "$F3"; do
+            bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_realworld_scoring.R "$input" "$fam"
+          done
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: T2_V3_B3_realworld_batch${{ matrix.batch }}_${{ matrix.f1 }}
+          path: artifacts/realworld_T2_V3_B3
+          if-no-files-found: error
+          retention-days: 90
+  parent-inference:
+    needs: score
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: T2_V3_B3_realworld_batch*
+          merge-multiple: true
+          path: artifacts/realworld_T2_V3_B3
+      - name: Independent parent-level CIs, FDR, and null diagnostics
+        run: bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_realworld_parent_inference.R
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: T2_V3_B3_realworld_parent_inference
+          path: artifacts/realworld_T2_V3_B3/aggregation_T2_V3_B3
+          if-no-files-found: error
+          retention-days: 90
