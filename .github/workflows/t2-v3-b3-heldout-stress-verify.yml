@@ -1,4 +1,4 @@
-name: T2 V3 B3 Held-out Stress Inferential Verification 2
+name: T2 V3 B3 Held-out Stress RAM 3
 on:
   push:
     branches: [t2-v3-contract-adapter-20261024]
