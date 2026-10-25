@@ -1,56 +1,59 @@
-# Independent V3 confirmatory inference on frozen predictions and paired Monte Carlo replications.
-# All bootstrap resampling is paired by row, preserving dependence between candidates.
-t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,alpha=.05,reference='median') {
-  stopifnot(is.matrix(sc$T),ncol(sc$T)==26L,nrow(sc$T)>=100L)
-  E<-vapply(models,function(m)(model_predict(sc$T,m)-sc$target)^2,numeric(nrow(sc$T)))
-  colnames(E)<-vapply(models,function(m)m$id,character(1))
-  if(!reference %in%colnames(E)) stop('Prespecified reference missing')
-  if(!identical(dim(E)[2L],length(models)))stop('Invalid error matrix')
-  base<-E[,reference]; R<-nrow(E)
-  # Stratified reproducibility across scientific shards, no global RNG dependency.
-  forgoal<-list()
-  for(metric in c('mse','q95')) {
-    obs<-if(metric=='mse') colMeans(E) else apply(E,2L,stats::quantile,probs=.95,type=8,names=FALSE)
-    if(metric=='mse') ref<-mean(base) else ref<-as.numeric(stats::quantile(base,.95,type=8))
-    # Shared replicate indices retain pairing; measure benefit as reference - candidate.
-    boot<-matrix(NA_real_,B,ncol(E))
-    for(b in seq_len(B)) {
-      ix<-sample.int(R,R,replace=TRUE)
-      ee<-E[ix,,drop=FALSE]; rr<-base[ix]
-      bv<-if(metric=='mse')colMeans(ee) else apply(ee,2L,stats::quantile,probs=.95,type=8,names=FALSE)
-      br<-if(metric=='mse')mean(rr) else as.numeric(stats::quantile(rr,.95,type=8))
-      boot[b,]<-br-bv
-    }
-    gain<-ref-obs
-    ci<-apply(boot,2,stats::quantile,probs=c(alpha/2,1-alpha/2),type=8,names=FALSE)
-    row<-data.frame(model=names(obs),metric=metric,reference=reference,
-     gain=gain,relative_gain_pct=if(ref>0)100*gain/ref else NA_real_,
-     ci_lower=ci[1,],ci_upper=ci[2,],reference_loss=ref,
-     candidate_loss=as.numeric(obs),stringsAsFactors=FALSE)
-    # Bootstrap distribution centered at the observed contrast represents
-    # the approximate H0: reference loss = candidate loss.
-    row$bootstrap_null_p<-vapply(seq_along(gain),function(j) {
-      if(names(gain)[j]==reference)return(1)
-      se<-stats::sd(boot[,j])
-      if(!is.finite(se)||se<=0)return(if(gain[j]>0)0 else 1)
+# Shared paired-bootstrap pass for MSE and q95; no repeated bootstrap streams.
+t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,
+                                 B=500L,alpha=.05,reference='mean') {
+  stopifnot(is.matrix(sc$T),ncol(sc$T)==26L,nrow(sc$T)>=100L,
+            B>=30L,alpha>0,alpha<1)
+  R<-nrow(sc$T)
+  ids<-vapply(models,function(m)m$id,character(1))
+  if(anyDuplicated(ids)||!reference%in%ids)stop('Invalid reference/candidate panel')
+  E<-vapply(models,function(m)(model_predict(sc$T,m)-sc$target)^2,numeric(R))
+  colnames(E)<-ids
+  ref_idx<-match(reference,ids)
+  # Use a C-backed column quantile implementation when already installed.
+  quantile_cols<-function(mat) {
+    if(requireNamespace('matrixStats',quietly=TRUE))
+      as.numeric(matrixStats::colQuantiles(mat,probs=.95,type=8))
+    else apply(mat,2L,stats::quantile,probs=.95,type=8,names=FALSE)
+  }
+  observed<-list(mse=colMeans(E),q95=quantile_cols(E))
+  bootstrap<-list(mse=matrix(NA_real_,B,length(ids)),
+                  q95=matrix(NA_real_,B,length(ids)))
+  for(b in seq_len(B)){
+    ix<-sample.int(R,R,replace=TRUE)
+    eb<-E[ix,,drop=FALSE]
+    means<-colMeans(eb)
+    bootstrap$mse[b,]<-means[ref_idx]-means
+    tails<-quantile_cols(eb)
+    bootstrap$q95[b,]<-tails[ref_idx]-tails
+  }
+  results<-lapply(c('mse','q95'),function(metric){
+    obs<-observed[[metric]]
+    gain<-obs[ref_idx]-obs
+    bs<-bootstrap[[metric]]
+    limits<-apply(bs,2L,stats::quantile,probs=c(alpha/2,1-alpha/2),
+                  names=FALSE,type=8)
+    p<-vapply(seq_along(ids),function(j){
+      if(j==ref_idx)return(1)
+      if(metric=='mse'){
+        d<-E[,ref_idx]-E[,j]
+        dev<-stats::sd(d)
+        if(!is.finite(dev)||dev==0)return(if(mean(d)>0)0 else 1)
+        return(stats::pt(-mean(d)/(dev/sqrt(R)),df=R-1L))
+      }
+      se<-stats::sd(bs[,j])
+      if(!is.finite(se)||se==0)return(if(gain[j]>0)0 else 1)
       stats::pnorm(-gain[j]/se)
     },numeric(1))
-    forgoal[[metric]]<-row
-  }
-  z<-do.call(rbind,forgoal)
-  # MSE: paired one-sided t test. Q95: centered paired-bootstrap null
-  # approximation. Both are corrected across the predeclared shard.
-  z$p_value<-NA_real_
-  for(i in seq_len(nrow(z))) {
-    if(z$model[i]==reference){z$p_value[i]<-1;next}
-    x<-base-E[,z$model[i]]
-    if(z$metric[i]=='mse'){
-      z$p_value[i]<-if(stats::sd(x)>0) stats::pt(-mean(x)/(stats::sd(x)/sqrt(R)),df=R-1L) else if(mean(x)>0) 0 else 1
-    } else {
-      z$p_value[i]<-z$bootstrap_null_p[i]
-    }
-  }
-  z$training_seed<-training_seed;z$heldout_seed<-heldout_seed;
+    data.frame(model=ids,metric=metric,reference=reference,
+      gain=as.numeric(gain),
+      relative_gain_pct=if(obs[ref_idx]>0)100*gain/obs[ref_idx] else NA_real_,
+      ci_lower=as.numeric(limits[1L,]),ci_upper=as.numeric(limits[2L,]),
+      reference_loss=obs[ref_idx],candidate_loss=as.numeric(obs),
+      bootstrap_null_p=if(metric=='q95')p else NA_real_,p_value=p,
+      stringsAsFactors=FALSE)
+  })
+  z<-do.call(rbind,results)
+  z$training_seed<-training_seed;z$heldout_seed<-heldout_seed
   z$sample_n<-n;z$scenario_id<-sc$scenario_id;z$replications<-R
   z
 }
