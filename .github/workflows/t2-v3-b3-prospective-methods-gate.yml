@@ -38,3 +38,4 @@ jobs:
         run: |
           bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_mad_smoke.R
           bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_nested_folds_smoke.R
+          bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_prospective_diagnostics_smoke.R
