@@ -1,4 +1,5 @@
 name: T2 V3 Discovery Production 60
+# Authorized production launch: Discovery only, existing scientific code unchanged.
 on:
   push:
     branches: [t2-v3-contract-adapter-20261024]
