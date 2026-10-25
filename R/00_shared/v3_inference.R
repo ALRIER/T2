@@ -27,11 +27,17 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
      gain=gain,relative_gain_pct=if(ref>0)100*gain/ref else NA_real_,
      ci_lower=ci[1,],ci_upper=ci[2,],reference_loss=ref,
      candidate_loss=as.numeric(obs),stringsAsFactors=FALSE)
+    # Bootstrap distribution centered at the observed contrast represents
+    # the approximate H0: reference loss = candidate loss.
+    row$bootstrap_null_p<-vapply(seq_along(gain),function(j) {
+      if(names(gain)[j]=='median')return(1)
+      (1+sum((boot[,j]-gain[j])>=gain[j]))/(B+1)
+    },numeric(1))
     forgoal[[metric]]<-row
   }
   z<-do.call(rbind,forgoal)
-  # MSE: paired one-sided t test for mean error reduction. q95 uses paired
-  # bootstrap inversion as an exploratory test, flagged separately.
+  # MSE: paired one-sided t test. Q95: centered paired-bootstrap null
+  # approximation. Both are corrected across the predeclared shard.
   z$p_value<-NA_real_
   for(i in seq_len(nrow(z))) {
     if(z$model[i]=='median'){z$p_value[i]<-1;next}
@@ -39,7 +45,7 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
     if(z$metric[i]=='mse'){
       z$p_value[i]<-if(stats::sd(x)>0) stats::pt(-mean(x)/(stats::sd(x)/sqrt(R)),df=R-1L) else if(mean(x)>0) 0 else 1
     } else {
-      z$p_value[i]<-NA_real_
+      z$p_value[i]<-z$bootstrap_null_p[i]
     }
   }
   z$training_seed<-training_seed;z$heldout_seed<-heldout_seed;
@@ -47,14 +53,14 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
   z
 }
 t2_v3_adjust_inference <- function(z,alpha=.05) {
-  # Family-wise multiplicity correction across candidate/scenario tests for MSE.
+  # Family-wise correction over all reported models, metrics and scenarios.
   z$p_holm<-NA_real_
-  i<-which(z$metric=='mse' & !is.na(z$p_value) & z$model!='median')
+  i<-which(!is.na(z$p_value) & z$model!='median')
   z$p_holm[i]<-p.adjust(z$p_value[i],method='holm')
   z$confirmed_mse_gain<-z$metric=='mse' & !is.na(z$p_holm) &
     z$p_holm<alpha & z$gain>0 & z$ci_lower>0
-  # Quantile CI is descriptive; no confirmatory q95 p test implemented here.
-  z$confirmed_q95_gain<-FALSE
+  z$confirmed_q95_gain<-z$metric=='q95' & !is.na(z$p_holm) &
+    z$p_holm<alpha & z$gain>0 & z$ci_lower>0
   z
 }
 
