@@ -30,6 +30,14 @@ for r in records:
  parents[pid]=r
 if not parents:
  raise RuntimeError('No newly audited B3 parent datasets')
+# Freeze only parents with at least one family-compatible regime. Evaluation
+# will still score every accepted parent in all six families, including cross
+# family transfer; neither model scores nor W participate in parent selection.
+direct_profiles={'normal_like','lognormal_like','weibull_like'}
+eligible={pid:r for pid,r in parents.items()
+          if r['empirical_profile'] in direct_profiles}
+if not eligible:raise RuntimeError('No compatible B3 parents; freeze blocked')
+parents=eligible
 families=['normal','lognormal','weibull','invgauss','exgaussian','exwald']
 rows=[]
 # Match using frozen Discovery B3 structural bands. Empirical shape fields
@@ -68,5 +76,5 @@ with p.open('w',newline='') as f:
 digest=hashlib.sha256(p.read_bytes()).hexdigest()
 (out/'freeze_T2_V3_B3.json').write_text(json.dumps(dict(version='T2_V3_B3',
  parent_count=len(parents),evaluation_families=6,rows=len(rows),manifest_sha256=digest,
- provenance='newly collected B3 profiles; source hashes per parent',selection_uses_performance=False),indent=2))
+ provenance='newly collected B3 profiles; source hashes per parent',selection_uses_performance=False,selection_criterion='at least one direct family regime match; full six-family evaluation retained'),indent=2))
 print(f'T2_V3_B3_NEW_PARENTS_FROZEN_PASS {len(rows)}')
