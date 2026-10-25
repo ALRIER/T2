@@ -4,7 +4,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 stage <- if (length(args)) args[[1L]] else stop('Usage: catalog|profile [batch]')
 batch <- if (length(args) > 1L) as.integer(args[[2L]]) else NA_integer_
-root <- 'artifacts/realworld_regime_matched_v2'
+root <- Sys.getenv('T2_RW_CATALOG_ROOT', 'artifacts/realworld_regime_matched_v2')
 dir.create(root, recursive = TRUE, showWarnings = FALSE)
 source('R/04_real_datasets/legacy_sources/realworld_external_battery_utils.R', local = .GlobalEnv)
 source('R/04_real_datasets/legacy_sources/13_realworld_external_battery.R', local = .GlobalEnv)
@@ -42,8 +42,8 @@ rw2_load_one <- function(sp, download_dir) {
 write_csv <- function(x, path) utils::write.csv(x, path, row.names = FALSE, na = '')
 catalog_path <- file.path(root, 'catalog.rds')
 if (stage == 'catalog') {
-  # 480 Rdatasets + financial/UCI sources create a surplus pool; the matching
-  # stage will freeze 500 successfully profiled parents using fixed quotas.
+  # Collect a fresh outcome-blind candidate pool. B3 freezes its new parents
+  # according to current Discovery profiles; no historical target count.
   Sys.setenv(EXTERNAL_RDATASETS_MAX = '480', EXTERNAL_RDATASETS_MIN_ROWS = '150')
   specs <- c(finance_specs(file.path(root, 'downloads')), eb_uci_specs(), eb_rdatasets_specs(file.path(root, 'downloads')))
   ids <- vapply(specs, `[[`, character(1), 'id')
