@@ -30,7 +30,7 @@ jobs:
             if(audit.data.name!=='T2 V3 B3 Fresh Real World Recollection'||audit.data.conclusion!=='success'||training.data.conclusion!=='success')
               return core.setFailed('Frozen Real World or Discovery source run incomplete');
             const a=await github.paginate(github.rest.actions.listWorkflowRunArtifacts,{
-              owner:context.repo.owner,repo:context.repo.repo,run_id:${{ inputs.b3_audit_run_id }},per_page:100});
+              owner:context.repo.owner,repo:context.repo.repo,run_id:Number(context.payload.inputs.b3_audit_run_id),per_page:100});
             const ids=a.filter(x=>!x.expired && /^T2_V3_B3_fresh_rw_profile-[0-9]+$/.test(x.name))
               .map(x=>Number(x.name.split('-').at(-1))).sort((x,y)=>x-y);
             if(!ids.length)return core.setFailed('No immutable audited parent datasets');
