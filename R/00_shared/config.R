@@ -7,7 +7,7 @@ ga_config <- list(
  population=150L, generations=80L, seeds=10L,
  discovery_cv_folds=5L, discovery_cv_inner_folds=3L,
  discovery_cv_scheme='scenario_stratified_deterministic_v1',
- discovery_weight_regularization_lambda=0.0,
+ discovery_weight_regularization_lambda=0.001,
  discovery_dro_tail_fraction=0.20,
  discovery_stability_bootstrap=500L,
  training_seed_indices=0:9, heldout_seed_index=10L, bootstrap_B=500L,
