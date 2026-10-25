@@ -1,4 +1,4 @@
-name: T2 V3 B3 Real World 664 Parent Freeze Gate
+name: T2 V3 B3 Fresh Parent Recollection Gate
 on:
   push:
     branches: [t2-v3-contract-adapter-20261024]
