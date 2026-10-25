@@ -33,7 +33,7 @@ jobs:
             const include=batches.flatMap(batch=>halves.map(f=>({
               batch:batch,f1:f[0],f2:f[1],f3:f[2]
             })));
-            return JSON.stringify({include:include});
+            return {include:include};
   score:
     needs: plan
     runs-on: ubuntu-latest
