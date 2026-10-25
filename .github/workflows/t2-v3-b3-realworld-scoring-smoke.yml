@@ -1,4 +1,4 @@
-name: T2 V3 B3 Real World RAM Inference 3
+name: T2 V3 B3 Real World Bootstrap Regression 4
 on:
   push:
     branches: [t2-v3-contract-adapter-20261024]
