@@ -39,6 +39,9 @@ outfile<-file.path(root,'scores_T2_V3_B3.csv')
 inferfile<-file.path(root,'paired_inference_T2_V3_B3.csv')
 if(file.exists(outfile))file.remove(outfile)
 if(file.exists(inferfile))file.remove(inferfile)
+nullfile<-file.path(root,'null_calibration_T2_V3_B3.csv')
+if(file.exists(nullfile))file.remove(nullfile)
+null_rows<-0L
 rows<-0L
 train_seeds<-if(smoke)0L else 0:9
 for(j in seq_len(nrow(profile))) {
@@ -48,6 +51,8 @@ for(j in seq_len(nrow(profile))) {
   if(!identical(unname(tools::md5sum(raw)),profile$raw_sha256[j]))stop('Raw audit fingerprint mismatch: ',id)
   x<-readRDS(raw);x<-as.numeric(x);x<-x[is.finite(x)]
   if(length(x)<150L)stop('Insufficient parent observations: ',id)
+  bench<-if(profile$empirical_profile[j]=='normal_like')'mean' else
+    if(profile$empirical_profile[j]=='empirical_unknown')'huber' else 'trimmed20'
   depths<-rw_depths(x)
   for(depth in names(depths)) {
   xx<-depths[[depth]]
@@ -77,12 +82,20 @@ for(j in seq_len(nrow(profile))) {
       z$raw_md5<-profile$raw_sha256[j];z$weights_sha256<-t2_sha256(p)
       write.table(z,outfile,sep=',',append=rows>0L,col.names=rows==0L,row.names=FALSE)
       set.seed(t2_seed(paste('B3_infer',family,id,depth,n,k),19000L))
-      inf<-t2_v3_infer_scenario(sc,models,k,j,n,B=if(smoke)50L else 500L)
+      inf<-t2_v3_infer_scenario(sc,models,k,j,n,B=if(smoke)50L else 500L,reference=bench)
       inf$dataset_id<-id;inf$family<-family;inf$depth<-depth
       inf$parent_dataset_id<-profile$parent_dataset_id[j]
       inf$proximity_layer<-rw_proximity(family,profile$empirical_profile[j])
       inf$target_type<-'depth_parent_empirical_mean_proxy'
       write.table(inf,inferfile,sep=',',append=rows>0L,col.names=rows==0L,row.names=FALSE)
+      if(k==0L&&depth=='full') {
+        set.seed(t2_seed(paste('B3_null',family,id,n),19400L))
+        nul<-t2_v3_null_fpr(sc,models,k,j,Bnull=if(smoke)30L else 200L,reference=bench)
+        nul$dataset_id<-id;nul$family<-family;nul$depth<-depth
+        nul$null_scope<-'paired_exchangeability_only'
+        write.table(nul,nullfile,sep=',',append=null_rows>0L,col.names=null_rows==0L,row.names=FALSE)
+        null_rows<-null_rows+1L;rm(nul)
+      }
       rows<-rows+1L;rm(z,inf,fit,models,candidates)
     }
     rm(T,sc,baselines);invisible(gc(verbose=FALSE))
