@@ -39,14 +39,14 @@ for(training_seed in if(smoke)0L else 0:9){
   for(id in if(smoke)c(0L,1L,120L) else 0:120){
     sc<-t2_v3_read_scenario(role,fam,seed,n,id)
     set.seed(t2_seed(paste(role,fam,seed,n,training_seed,id),9001L))
-    z<-t2_v3_infer_scenario(sc,models,training_seed,seed,n,B=if(smoke)50L else as.integer(ga_config$bootstrap_B))
+    z<-t2_v3_infer_scenario(sc,models,training_seed,seed,n,B=if(smoke)50L else as.integer(ga_config$bootstrap_B),reference='mean')
     z$role<-role;z$family<-fam;z$discovery_sha256<-discovery_hash
     stopifnot(all(is.finite(z$ci_lower)),all(is.finite(z$ci_upper)))
     write.table(z,scores_file,sep=',',append=count>0L,col.names=count==0L,row.names=FALSE)
     count<-count+1L
     if(id==0L){
       null<-t2_v3_null_fpr(sc,models,training_seed,seed,
-         Bnull=if(smoke)30L else as.integer(ga_config$bootstrap_B))
+         Bnull=if(smoke)30L else as.integer(ga_config$bootstrap_B),reference='mean')
       null$role<-role;null$family<-fam
       write.table(null,null_file,sep=',',append=training_seed>0L,col.names=training_seed==0L,row.names=FALSE)
       rm(null)
@@ -66,7 +66,7 @@ stopifnot(all(c('mse','q95')%in%z$metric),file.exists(null_file))
 rm(z);invisible(gc(verbose=FALSE))
 writeLines(c(sprintf('role=%s',role),sprintf('family=%s',fam),
  sprintf('evaluation_seed=%d',seed),sprintf('sample_n=%d',n),
- 'B3_streaming=true','bootstrap=paired','null=paired_random_swap',
+ 'B3_streaming=true','bootstrap=paired','reference=mean_predeclared','null=paired_random_swap',
  'q95_inference=bootstrap_normal_and_joint_holm',
  'FPR_scope=diagnostic_not_procedure_wide'),file.path(out,'protocol.txt'))
 cat('T2_V3_B3_INFERENCE_STREAM_PASS',role,fam,seed,n,count,'scenarios\\n')
