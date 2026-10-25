@@ -24,7 +24,10 @@ for(train_seed in 0:9) {
   if(!file.exists(frozen_file)) stop('Missing immutable discovery model: ',frozen_file)
   fit<-t2_read_rds(frozen_file)
   if(length(fit$engines)!=4L || length(fit$models)<8L)stop('Frozen training registry incomplete')
-  models<-fit$models
+  baselines<-lapply(ESTIMATOR_NAMES,function(nm)new_frozen_model(nm,component=nm))
+  learned<-Filter(function(m)!is.null(m$weights),fit$models)
+  models<-c(baselines,learned)
+  if(length(models)!=30L)stop('B3 requires all 26 benchmarks and four frozen learners')
   z<-t2_v3_stream_scores('heldout',family,seed,n,models,
                         reps=500L,selected=0:120)
   z$training_seed<-train_seed
@@ -34,7 +37,7 @@ for(train_seed in 0:9) {
   write.table(z,outcsv,append=!first,col.names=first,
               row.names=FALSE,sep=',',quote=TRUE)
   first<-FALSE
-  rm(fit,models,z);invisible(gc(verbose=FALSE))
+  rm(fit,models,z,learned,baselines);invisible(gc(verbose=FALSE))
   t2_b3_ram_guard('heldout',out,paste0('train_',train_seed))
   cat('V3_HELDOUT_SEED_PASS',family,'training',train_seed,
       'evaluation',seed,'n',n,'rows',nrow(z),'\n')
