@@ -66,6 +66,8 @@ if(file.exists(nullfile))file.remove(nullfile)
 null_rows<-0L
 rows<-0L
 train_seeds<-if(smoke)0L else 0:9
+# Cache four frozen W candidates once per family worker.
+candidate_cache<-new.env(parent=emptyenv())
 t2_b3_inputs_manifest(c(
  file.path(batchdir,'profiles.csv'),
  file.path(batchdir,'raw',paste0(profile$dataset_id,'.rds')),
@@ -97,9 +99,14 @@ for(j in seq_len(nrow(profile))) {
     for(k in train_seeds) {
       p<-file.path('artifacts','discovery_v3',family,sprintf('seed%02d',k),'discovery.rds')
       if(!file.exists(p))stop('Missing frozen Discovery model: ',p)
-      fit<-readRDS(p)
-      if(length(fit$engines)!=4L)stop('Invalid frozen engines')
-      candidates<-Filter(function(m)!is.null(m$weights),fit$models)
+      cache_key<-as.character(k)
+      if(!exists(cache_key,envir=candidate_cache,inherits=FALSE)){
+       fit<-readRDS(p)
+       if(length(fit$engines)!=4L)stop('Invalid frozen engines')
+       assign(cache_key,Filter(function(m)!is.null(m$weights),fit$models),envir=candidate_cache)
+       rm(fit)
+      }
+      candidates<-get(cache_key,envir=candidate_cache,inherits=FALSE)
       models<-c(baselines,candidates)
       if(anyDuplicated(vapply(models,function(m)m$id,character(1))))stop('Duplicate candidates')
       z<-score_model_set(T,models,mean(xx))
@@ -138,7 +145,7 @@ for(j in seq_len(nrow(profile))) {
         write.table(nul,nullfile,sep=',',append=null_rows>0L,col.names=null_rows==0L,row.names=FALSE)
         null_rows<-null_rows+1L;rm(nul)
       }
-      rows<-rows+1L;rm(z,inf,fit,models,candidates)
+      rows<-rows+1L;rm(z,inf,models,candidates)
     }
     rm(T,sc,baselines);invisible(gc(verbose=FALSE))
     t2_b3_ram_guard('realworld',root,paste0(j,'_',depth,'_',n))
