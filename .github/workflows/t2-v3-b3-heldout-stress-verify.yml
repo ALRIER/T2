@@ -1,4 +1,4 @@
-name: T2 V3 B3 Held-out Stress Bootstrap Regression 4
+name: T2 V3 B3 Held-out Stress Final Gate 5
 on:
   push:
     branches: [t2-v3-contract-adapter-20261024]
