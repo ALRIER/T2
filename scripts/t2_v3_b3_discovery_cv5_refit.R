@@ -12,10 +12,12 @@ source('R/00_shared/v3_downstream.R')
 source('R/00_shared/t2_v3_b3_resources.R')
 source('R/00_shared/t2_v3_b3_naming.R')
 stopifnot(ga_config$discovery_cv_folds==5L)
-ids<-0:120
-foldid<-ids%%5L+1L
-training<-ids[foldid!=fold]
-validation<-ids[foldid==fold]
+source('R/02_discovery/t2_v3_b3_nested_folds.R')
+parts<-t2_b3_nested_partitions(fam,seed,fold)
+ids<-parts$outer$scenario_id
+foldid<-parts$outer$fold
+training<-parts$training
+validation<-parts$validation
 stopifnot(length(training)+length(validation)==121L,!any(training%in%validation))
 out<-file.path('artifacts','T2_V3_B3_discovery_cv5_refit',fam,sprintf('seed%02d',seed),sprintf('fold%02d',fold))
 dir.create(out,recursive=TRUE,showWarnings=FALSE)
