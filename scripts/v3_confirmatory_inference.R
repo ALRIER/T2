@@ -11,8 +11,14 @@ source('R/00_shared/pipeline.R')
 source('R/00_shared/v3_scientific_adapter.R')
 source('R/00_shared/v3_downstream.R')
 source('R/00_shared/v3_inference.R')
+source('R/00_shared/t2_v3_b3_resources.R')
 out<-file.path('artifacts','v3_confirmatory_inference',role,fam,sprintf('seed%02d_n%d',seed,n))
 dir.create(out,recursive=TRUE,showWarnings=FALSE)
+t2_b3_inputs_manifest(c(
+ file.path('artifacts/discovery_v3',fam,sprintf('seed%02d',if(smoke)0L else 0:9),'discovery.rds'),
+ file.path(t2_v3_block_dir(role,fam,seed,n),sprintf('scenario_%04d.rds',if(smoke)c(0L,1L,120L) else 0:120))
+),out,role)
+t2_b3_ram_guard(role,out,'start')
 # Stream each scenario directly to persistent storage; do not retain the
 # 121 x 10 inference result tables or scientific matrices in memory.
 scores_file<-file.path(out,'paired_inference.csv')
@@ -49,6 +55,7 @@ for(training_seed in if(smoke)0L else 0:9){
     if(id%%20L==0L)invisible(gc(verbose=FALSE))
   }
   rm(fit,models,learned,baselines);invisible(gc(verbose=FALSE))
+  t2_b3_ram_guard(role,out,paste0('training_',training_seed))
 }
 # Holm adjustment applies to the complete prespecified shard family, after
 # streaming all candidate/scenario tests. No large Monte Carlo arrays reloaded.
