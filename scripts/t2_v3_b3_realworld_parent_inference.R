@@ -78,9 +78,13 @@ hyp<-split(parents,interaction(parents$family,parents$proximity_layer,parents$mo
 null_rej<-numeric(Bnull)
 for(b in seq_len(Bnull)){
   null_p<-numeric(0)
+  # A parent receives one common null sign across all its appearances,
+  # preserving cross-family/metric dependence instead of treating repeats as independent.
+  parent_ids<-unique(parents$parent_dataset_id)
+  parent_flips<-setNames(sample(c(-1,1),length(parent_ids),replace=TRUE),parent_ids)
   for(h in hyp){
     if(nrow(h)<2L)next
-    flips<-sample(c(-1,1),nrow(h),replace=TRUE)
+    flips<-unname(parent_flips[as.character(h$parent_dataset_id)])
     for(metric in c('mse','q95')){
       x<-h[[paste0(metric,'_gain')]]*flips
       if(!is.finite(sd(x))||sd(x)==0){p<-if(mean(x)>0)0 else 1}
