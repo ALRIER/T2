@@ -46,6 +46,12 @@ jobs:
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
           path: artifacts/mc_v3_real26
+      - name: Install Optuna isolated HPO dependency
+        run: python3 -m pip install --user 'optuna>=4,<5'
+      - name: Tune four engines on three inner folds without outer validation leakage
+        env:
+          T2_B3_NESTED_TRIALS: '8'
+        run: python3 scripts/t2_v3_b3_nested_optuna.py "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.fold }}" --trials "$T2_B3_NESTED_TRIALS"
       - name: Strict train-four-folds test-fifth-fold optimization
         run: bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_discovery_cv5_refit.R "${{ matrix.family }}" "${{ matrix.seed }}" "${{ matrix.fold }}"
       - name: Bootstrap stability and worst-regime risk diagnostics
