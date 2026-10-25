@@ -35,3 +35,7 @@ out_data<-read.csv(outcsv)
 write.csv(aggregate(cbind(mse,q95)~model+training_seed,data=out_data,mean),
           file.path(out,'summary.csv'),row.names=FALSE)
 cat('V3_HELDOUT_SHARD_PASS',family,seed,n,'\n')
+
+# Publish canonical B3-named counterparts without breaking existing downstream references.
+source('R/00_shared/t2_v3_b3_naming.R')
+t2_b3_publish(out)
