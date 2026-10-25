@@ -60,7 +60,7 @@ t2_b3_weight_stability <- function(fold_models,threshold=1/26) {
 t2_b3_single_component_ablation <- function(T,model,target) {
  stopifnot(!is.null(model$weights),length(model$weights)==26L)
  base<-score_model_set(T,list(model),target)
- lapply(seq_len(26L),function(i){
+ do.call(rbind,lapply(seq_len(26L),function(i){
    w<-model$weights
    if(w[i]>=1-1e-12)return(data.frame(component=i,delta_mse=NA_real_,
                                             delta_q95=NA_real_))
@@ -69,5 +69,5 @@ t2_b3_single_component_ablation <- function(T,model,target) {
    z<-score_model_set(T,list(m),target)
    data.frame(component=i,delta_mse=z$mse-base$mse,
               delta_q95=z$q95-base$q95)
- })|> do.call(what=rbind)
+ }))
 }
