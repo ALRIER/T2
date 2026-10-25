@@ -60,12 +60,16 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,
 t2_v3_adjust_inference <- function(z,alpha=.05) {
   # Family-wise correction over all reported models, metrics and scenarios.
   z$p_holm<-NA_real_
+  z$q_BH<-NA_real_
   i<-which(!is.na(z$p_value) & z$model!=z$reference)
-  z$p_holm[i]<-p.adjust(z$p_value[i],method='holm')
-  z$confirmed_mse_gain<-z$metric=='mse' & !is.na(z$p_holm) &
-    z$p_holm<alpha & z$gain>0 & z$ci_lower>0
-  z$confirmed_q95_gain<-z$metric=='q95' & !is.na(z$p_holm) &
-    z$p_holm<alpha & z$gain>0 & z$ci_lower>0
+  z$p_holm[i]<-stats::p.adjust(z$p_value[i],method='holm')
+  z$q_BH[i]<-stats::p.adjust(z$p_value[i],method='BH')
+  # Existing T2 taxonomy uses BH-FDR at alpha .05; Holm is additionally
+  # reported as a stricter familywise diagnostic, never substituted silently.
+  z$confirmed_mse_gain<-z$metric=='mse' & !is.na(z$q_BH) &
+    z$q_BH<=alpha & z$gain>0 & z$ci_lower>0
+  z$confirmed_q95_gain<-z$metric=='q95' & !is.na(z$q_BH) &
+    z$q_BH<=alpha & z$gain>0 & z$ci_lower>0
   z
 }
 
