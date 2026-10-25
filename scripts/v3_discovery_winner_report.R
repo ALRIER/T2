@@ -32,6 +32,20 @@ dir.create('artifacts/discovery_analysis',recursive=TRUE,showWarnings=FALSE)
 write.csv(out,'artifacts/discovery_analysis/training_candidates.csv',row.names=FALSE)
 agg <- aggregate(cbind(mse,q95)~family+engine+goal,out,mean)
 write.csv(agg,'artifacts/discovery_analysis/training_summary.csv',row.names=FALSE)
+# Fully defined descriptive two-metric candidate taxonomy, without
+# treating Discovery training objectives as independent p-value evidence.
+# Relative gains use the strongest *within-family* single-engine/goal
+# performance reference as a descriptive training comparator.
+baseline<-aggregate(cbind(mse,q95)~family,out,min)
+names(baseline)[2:3]<-c('training_best_mse','training_best_q95')
+out<-merge(out,baseline,by='family',sort=FALSE)
+out$mse_gain<-out$training_best_mse-out$mse
+out$q95_gain<-out$training_best_q95-out$q95
+# Pareto membership is defensible when there is no independent baseline.
+out$taxonomy<-ifelse(out$goal=='balanced','joint_mse_q95_candidate',
+  ifelse(out$goal=='mse','mse_specialist_candidate','q95_specialist_candidate'))
+out$taxonomy_scope<-'discovery_descriptive_candidate_role_only'
+write.csv(out,'artifacts/discovery_analysis/candidate_taxonomy_T2_V3_B3.csv',row.names=FALSE)
 cat('V3_DISCOVERY_WINNER_REPORT_PASS',nrow(out),'rows\n')
 
 # Component-level weight contribution and seed stability. These are
