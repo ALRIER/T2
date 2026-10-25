@@ -24,7 +24,32 @@ t2_b3_inputs_manifest(file.path(source_root,sprintf('scenario_%04d.rds',ids)),ou
 t2_b3_ram_guard('discovery_cv5_refit',out,'start')
 d<-t2_v3_discovery_input(fam,seed,1000L,500L,training)
 shard<-sprintf('T2_V3_B3_cv5_%s_seed%02d_fold%d',fam,seed,fold)
-fit<-t2_run_discovery(d,'full',shard,'all')
+# Outer fold is never supplied to Optuna. Refit each engine with the
+# configurations selected by three internal folds.
+if(!requireNamespace('jsonlite',quietly=TRUE))stop('jsonlite required')
+hpo_root<-file.path('artifacts','T2_V3_B3_nested_optuna',fam,
+ sprintf('seed%02d',seed),sprintf('fold%02d',fold))
+engines<-list()
+for(engine in c('ga','nsga2','de','dirichlet')){
+ selected<-file.path(hpo_root,paste0(engine,'_best.json'))
+ if(!file.exists(selected))stop('Missing nested Optuna configuration: ',selected)
+ chosen<-jsonlite::fromJSON(selected)$best_params
+ cfg<-ga_config
+ cfg$population<-as.integer(chosen$population)
+ cfg$generations<-as.integer(chosen$generations)
+ cfg$mutation_rate<-as.numeric(chosen$mutation_rate)
+ cfg$crossover_probability<-as.numeric(chosen$crossover_probability)
+ cfg$discovery_weight_regularization_lambda<-as.numeric(chosen$regularization_lambda)
+ engine_seed<-t2_seed(paste(shard,engine),7231L)
+ engines[[engine]]<-switch(engine,
+   ga=ga_discover(d$scenarios,cfg,seed=engine_seed,shard=NULL),
+   nsga2=nsga_discover(d$scenarios,cfg,seed=engine_seed,shard=NULL),
+   de=de_discover(d$scenarios,cfg,seed=engine_seed,F=chosen$F,CR=chosen$CR,shard=NULL),
+   dirichlet=dirichlet_discover(d$scenarios,cfg,seed=engine_seed,
+       alpha=chosen$alpha,n_draws=cfg$population*cfg$generations,shard=NULL))
+}
+fit<-list(engines=engines,models=t2_models(engines),config=ga_config,
+ training_seed_index=seed,nested_cv=TRUE,outer_fold=fold)
 rm(d);invisible(gc(verbose=FALSE))
 stopifnot(length(fit$engines)==4L)
 for(m in Filter(function(x)!is.null(x$weights),fit$models))
