@@ -66,6 +66,7 @@ jobs:
         run: |
           echo 'BLOCKED: confirmatory Held-out requires promoted frozen B3 W from the new Discovery.'
           echo 'No invalid production run was launched.'
+          exit 1
   stress:
     needs: preflight
     runs-on: ubuntu-latest
@@ -82,3 +83,4 @@ jobs:
         run: |
           echo 'BLOCKED: external scoring must use promoted B3 W and a successful fresh B3 parent-collection run ID.'
           echo 'New independent datasets and model promotion are required before launch.'
+          exit 1
