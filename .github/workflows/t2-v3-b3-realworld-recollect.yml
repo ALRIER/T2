@@ -21,12 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Catalog independent external data with outcome-blind rules
-        run: Rscript scripts/realworld_v2_catalog.R catalog
+        run: T2_RW_CATALOG_ROOT=artifacts/T2_V3_B3_fresh_profiles Rscript scripts/realworld_v2_catalog.R catalog
       - id: plan
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import csv,json
-          rows=list(csv.DictReader(open('artifacts/realworld_regime_matched_v2/catalog.csv')))
+          rows=list(csv.DictReader(open('artifacts/T2_V3_B3_fresh_profiles/catalog.csv')))
           batches=sorted({int(x['batch']) for x in rows})
           if not batches: raise ValueError('Real World catalog is empty')
           print('batches='+json.dumps({'batch':batches},separators=(',',':')))
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: T2_V3_B3_fresh_rw_catalog
-          path: artifacts/realworld_regime_matched_v2/catalog.*
+          path: artifacts/T2_V3_B3_fresh_profiles/catalog.*
           retention-days: 90
   profile:
     needs: catalog
@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 4
       matrix: ${{ fromJSON(needs.catalog.outputs.batches) }}
     container:
       image: ghcr.io/alrier/t2-r:4.3.3-statmod-v1
@@ -54,13 +54,13 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: T2_V3_B3_fresh_rw_catalog
-          path: artifacts/realworld_regime_matched_v2
+          path: artifacts/T2_V3_B3_fresh_profiles
       - name: Audit independent dataset quality and record source hashes
-        run: Rscript scripts/realworld_v2_catalog.R profile ${{ matrix.batch }}
+        run: T2_RW_CATALOG_ROOT=artifacts/T2_V3_B3_fresh_profiles Rscript scripts/realworld_v2_catalog.R profile ${{ matrix.batch }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: T2_V3_B3_fresh_rw_profile-${{ matrix.batch }}
-          path: artifacts/realworld_regime_matched_v2/profile_batch_*
+          path: artifacts/T2_V3_B3_fresh_profiles/profile_batch_*
           retention-days: 90
           if-no-files-found: error
