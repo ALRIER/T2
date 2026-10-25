@@ -1,6 +1,11 @@
 name: T2 V3 B3 Real World Full Inferential Production
 on:
   workflow_dispatch:
+    inputs:
+      b3_audit_run_id:
+        description: 'Successful fresh T2 V3 B3 Real World recollection run ID (not V2)'
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
@@ -19,14 +24,14 @@ jobs:
         with:
           script: |
             const audit=await github.rest.actions.getWorkflowRun({
-              owner:context.repo.owner,repo:context.repo.repo,run_id:40142001843});
+              owner:context.repo.owner,repo:context.repo.repo,run_id:Number(context.payload.inputs.b3_audit_run_id)});
             const training=await github.rest.actions.getWorkflowRun({
               owner:context.repo.owner,repo:context.repo.repo,run_id:40132811105});
-            if(audit.data.conclusion!=='success'||training.data.conclusion!=='success')
+            if(audit.data.name!=='T2 V3 B3 Fresh Real World Recollection'||audit.data.conclusion!=='success'||training.data.conclusion!=='success')
               return core.setFailed('Frozen Real World or Discovery source run incomplete');
             const a=await github.paginate(github.rest.actions.listWorkflowRunArtifacts,{
-              owner:context.repo.owner,repo:context.repo.repo,run_id:40142001843,per_page:100});
-            const ids=a.filter(x=>!x.expired && /^t2-v3-rw-audit-profile-[0-9]+$/.test(x.name))
+              owner:context.repo.owner,repo:context.repo.repo,run_id:${{ inputs.b3_audit_run_id }},per_page:100});
+            const ids=a.filter(x=>!x.expired && /^T2_V3_B3_fresh_rw_profile-[0-9]+$/.test(x.name))
               .map(x=>Number(x.name.split('-').at(-1))).sort((x,y)=>x-y);
             if(!ids.length)return core.setFailed('No immutable audited parent datasets');
             return ids;
@@ -37,14 +42,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v5
         with:
-          pattern: t2-v3-rw-audit-profile-*
+          pattern: T2_V3_B3_fresh_rw_profile-*
           merge-multiple: true
-          run-id: 40142001843
+          run-id: ${{ inputs.b3_audit_run_id }}
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
-          path: artifacts/realworld_regime_matched_v2
-      - name: Block scoring unless original 664-parent population is frozen
-        run: python3 scripts/t2_v3_b3_freeze_parents.py
+          path: artifacts/T2_V3_B3_fresh_profiles
+      - name: Freeze newly collected B3 parents before scoring
+        run: python3 scripts/t2_v3_b3_freeze_parents.py artifacts/T2_V3_B3_fresh_profiles
       - uses: actions/upload-artifact@v4
         with:
           name: T2_V3_B3_frozen_parent_manifest
@@ -70,11 +75,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
-          name: t2-v3-rw-audit-profile-${{ matrix.batch }}
-          run-id: 40142001843
+          name: T2_V3_B3_fresh_rw_profile-${{ matrix.batch }}
+          run-id: ${{ inputs.b3_audit_run_id }}
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
-          path: artifacts/realworld_regime_matched_v2
+          path: artifacts/T2_V3_B3_fresh_profiles
       - uses: actions/download-artifact@v5
         with:
           pattern: t2-v3-discovery-${{ matrix.family }}-seed*
@@ -93,7 +98,7 @@ jobs:
           BATCH: ${{ matrix.batch }}
         run: |
           printf -v num '%03d' "$BATCH"
-          bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_realworld_scoring.R "artifacts/realworld_regime_matched_v2/profile_batch_${num}" "$FAMILY"
+          bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_realworld_scoring.R "artifacts/T2_V3_B3_fresh_profiles/profile_batch_${num}" "$FAMILY"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -102,7 +107,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
   score_b:
-    needs: plan
+    needs: [plan, freeze-parents]
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -120,11 +125,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v5
         with:
-          name: t2-v3-rw-audit-profile-${{ matrix.batch }}
-          run-id: 40142001843
+          name: T2_V3_B3_fresh_rw_profile-${{ matrix.batch }}
+          run-id: ${{ inputs.b3_audit_run_id }}
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
-          path: artifacts/realworld_regime_matched_v2
+          path: artifacts/T2_V3_B3_fresh_profiles
       - uses: actions/download-artifact@v5
         with:
           pattern: t2-v3-discovery-${{ matrix.family }}-seed*
@@ -143,7 +148,7 @@ jobs:
           BATCH: ${{ matrix.batch }}
         run: |
           printf -v num '%03d' "$BATCH"
-          bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_realworld_scoring.R "artifacts/realworld_regime_matched_v2/profile_batch_${num}" "$FAMILY"
+          bash scripts/run_r_in_container.sh Rscript scripts/t2_v3_b3_realworld_scoring.R "artifacts/T2_V3_B3_fresh_profiles/profile_batch_${num}" "$FAMILY"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
