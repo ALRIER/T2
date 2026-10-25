@@ -31,7 +31,9 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
     # the approximate H0: reference loss = candidate loss.
     row$bootstrap_null_p<-vapply(seq_along(gain),function(j) {
       if(names(gain)[j]=='median')return(1)
-      (1+sum((boot[,j]-gain[j])>=gain[j]))/(B+1)
+      se<-stats::sd(boot[,j])
+      if(!is.finite(se)||se<=0)return(if(gain[j]>0)0 else 1)
+      stats::pnorm(-gain[j]/se)
     },numeric(1))
     forgoal[[metric]]<-row
   }
