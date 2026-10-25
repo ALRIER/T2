@@ -33,8 +33,12 @@ t2_v3_stream_scores <- function(role,family,seed,n,models,reps=500L,
 }
 t2_v3_discovery_input <- function(family,seed,n=1000L,reps=500L,
                                   selected=0:120) {
-  z <- t2_v3_read_block('discovery',family,seed,n,reps,selected)
+  # Prefer individual immutable scenario shards, avoiding a redundant canonical
+  # 121-scenario object in RAM alongside the optimizer training list.
+  ids <- as.integer(selected)
+  if(!length(ids)||anyDuplicated(ids)||!all(ids %in% 0:120))stop('Invalid training IDs')
+  scenarios <- lapply(ids,function(id)t2_v3_read_scenario('discovery',family,seed,n,id,reps))
   list(protocol=t2_v3_protocol(),role='discovery',family=family,
        seed_index=seed,n=n,replications=reps,
-       scenarios=z$scenarios,canonical_id=sprintf('v3_discovery_%s_seed%02d_n%d',family,seed,n))
+       scenarios=scenarios,canonical_id=sprintf('v3_discovery_%s_seed%02d_n%d',family,seed,n))
 }
