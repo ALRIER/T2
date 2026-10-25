@@ -1,0 +1,65 @@
+name: T2 V3 smoke-only repair verification
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths: ['.github/workflows/v3-smoke-only-repair.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: t2-v3-smoke-only-repair
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the completed Monte Carlo source with 240 scientific artifacts
+        id: origin
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs=await github.paginate(github.rest.actions.listWorkflowRunsForRepo,{
+              owner:context.repo.owner,repo:context.repo.repo,branch:'t2-hpo-redesign-v1',per_page:100
+            });
+            const source=runs.find(r=>r.name==='T2 V3 - Monte Carlo Production Only' &&
+              r.conclusion==='success' && r.head_sha?.startsWith('5f234b0'));
+            if(!source) return core.setFailed('Completed original V3 production run not found');
+            core.setOutput('run_id',String(source.id));
+            core.info('Using immutable V3 Monte Carlo run '+source.id);
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify R scientific runtime
+        run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
+      - name: Download frozen Discovery V3 partition
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-discovery-normal-seed0-n1000
+          path: artifacts/mc_v3_real26
+          run-id: ${{ steps.origin.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Download frozen Held-out V3 partition
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-heldout-normal-seed10-n200
+          path: artifacts/mc_v3_real26
+          run-id: ${{ steps.origin.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Download frozen Stress V3 partition
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-stress-normal-seed15-n200
+          path: artifacts/mc_v3_real26
+          run-id: ${{ steps.origin.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Test repaired V3 Discovery to independent Held-out and Stress
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_full_handoff_smoke.R

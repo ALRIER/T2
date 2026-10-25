@@ -1,0 +1,100 @@
+name: T2 V3 complete handoff smoke
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths:
+      - '.github/workflows/v3-complete-handoff-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: t2-v3-handoff-smoke-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate completed V3 production run and verify 240 artifacts
+        id: source
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              branch: 't2-hpo-redesign-v1', per_page: 100
+            });
+            const matches = runs.filter(r => r.head_sha?.startsWith('5f234b0') &&
+               r.name === 'T2 V3 - Monte Carlo Production Only' &&
+               r.status === 'completed' && r.conclusion === 'success');
+            if (matches.length !== 1) core.setFailed('Expected one completed V3 run for commit 5f234b0; found ' + matches.length);
+            else {
+              const run = matches[0];
+              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                owner:context.repo.owner, repo:context.repo.repo,run_id:run.id,per_page:100
+              });
+              const scientific = artifacts.filter(a=>a.name.startsWith('mc-v3-') && !a.expired);
+              if (scientific.length !== 240) core.setFailed('Expected 240 live scientific artifacts, found '+scientific.length);
+              else core.setOutput('run_id',String(run.id));
+            }
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Confirm pinned R runtime
+        run: bash scripts/run_r_in_container.sh Rscript scripts/check_environment.R
+      - name: Download real Discovery Monte Carlo partition
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-discovery-normal-seed0-n1000
+          path: /tmp/v3-smoke/discovery
+          run-id: ${{ steps.source.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Download independent Held-out partition
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-heldout-normal-seed10-n200
+          path: /tmp/v3-smoke/heldout
+          run-id: ${{ steps.source.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Download independent Stress partition
+        uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-stress-normal-seed15-n200
+          path: /tmp/v3-smoke/stress
+          run-id: ${{ steps.source.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Install scientific partitions without changing original data
+        shell: bash
+        run: |
+          set -euo pipefail
+          for role in discovery heldout stress; do
+            mapfile -t found < <(find "/tmp/v3-smoke/$role" -name canonical.rds -type f)
+            if [ "${#found[@]}" -ne 1 ]; then echo "Expected unique canonical.rds for $role" >&2; exit 1; fi
+            source_dir="$(dirname "${found[0]}")"
+            case "$role" in discovery) seed=00; n=1000;; heldout) seed=10; n=200;; stress) seed=15; n=200;; esac
+            dest="artifacts/mc_v3_real26/v3_real26_seedplan20_mixedheldout_rlm100/$role/normal/seed$seed/n${n}_r500"
+            mkdir -p "$dest"
+            cp -a "$source_dir/." "$dest/"
+            test -s "$dest/canonical.rds"
+            test -s "$dest/scenario_0000.rds"
+            test -s "$dest/scenario_0120.rds"
+          done
+          rm -rf /tmp/v3-smoke
+      - name: Run V3 scientific sanity and four-engine end-to-end smoke
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_full_handoff_smoke.R
+      - name: Save smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t2-v3-handoff-smoke-diagnostics
+          path: artifacts/
+          retention-days: 30
+          if-no-files-found: warn

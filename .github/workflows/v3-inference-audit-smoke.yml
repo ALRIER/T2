@@ -1,0 +1,43 @@
+name: T2 V3 Inferential Audit Smoke
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths: ['.github/workflows/v3-inference-audit-smoke.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: read
+jobs:
+  inference-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {role: heldout, seed: 10, n: 200}
+          - {role: stress, seed: 15, n: 200}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: t2-v3-discovery-normal-seed0
+          run-id: 40132811105
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/discovery_v3
+      - uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-${{ matrix.role }}-normal-seed${{ matrix.seed }}-n${{ matrix.n }}
+          run-id: 40053612297
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/mc_v3_real26
+      - name: Verify paired confidence intervals and null calibration
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_confirmatory_inference.R "${{ matrix.role }}" normal "${{ matrix.seed }}" "${{ matrix.n }}" smoke

@@ -47,10 +47,13 @@ nsga_offspring <- function(W,n,eligible,mutation_rate=.15,crossover_probability=
 # training_scenarios is a list of list(T=R x 26 matrix,target=numeric,
 # band=clean/low/intermediate/high,mechanism=string,eligible=logical).
 # The same prepared Monte Carlo matrices are reused for every generation.
-nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
+nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L,lambda=0) {
  if(!length(training_scenarios)) stop('No training scenarios')
  bands<-c('clean','low','intermediate','high'); accum<-matrix(0,ncol(W),2L)
- for(band in bands) {
+ present<-bands[vapply(bands,function(b)any(vapply(training_scenarios,function(z)
+  identical(as.character(z$band),b),logical(1))),logical(1))]
+ if(!length(present))stop('No valid bands in CV training partition')
+ for(band in present) {
    sc<-training_scenarios[vapply(training_scenarios,function(z)
      identical(as.character(z$band),band),logical(1))]
    if(!length(sc)) stop(paste('Missing training band:',band))
@@ -66,13 +69,18 @@ nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
    # Equal within-band scenario weights, equal total weight across four bands.
    # explicit average avoids depending on replicate/sample counts
    band_result<-Reduce('+',Map(function(v,ix) v*(length(ix)/length(sc)), band_values, groups))
-   accum<-accum+band_result/length(bands)
+   accum<-accum+band_result/length(present)
+ }
+ if(lambda>0){
+  # Same dimensionless regularizer for both objectives after normalization
+  pen<-lambda*colSums((normalize_weights(W)-1/26)^2)
+  accum<-accum + cbind(pen,pen)
  }
  colnames(accum)<-c('mse','q95');accum
 }
 nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(TRUE,26L),shard=NULL) {
  set.seed(seed);n<-cfg$population; W<-nsga_initial(n,eligible)
- fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size)
+ fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size,if(is.null(cfg$discovery_weight_regularization_lambda)) 0 else cfg$discovery_weight_regularization_lambda)
  O<-fitness(W);history<-numeric();archiveW<-W;archiveO<-O; best_prior<- -Inf;stale<-0L
  start_g<-1L; last_generation<-0L
  resume<-t2_optimizer_restore(shard,'nsga2',cfg)

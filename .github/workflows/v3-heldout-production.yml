@@ -1,0 +1,92 @@
+name: T2 V3 Held-out Production 90
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths: ['.github/workflows/v3-heldout-production.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: t2-v3-heldout-production
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      mc_run: ${{ steps.source.outputs.mc_run }}
+      training_run: ${{ steps.source.outputs.training_run }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: source
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs=await github.paginate(github.rest.actions.listWorkflowRunsForRepo,{owner:context.repo.owner,repo:context.repo.repo,per_page:100});
+            const mc=runs.find(r=>r.name==='T2 V3 - Monte Carlo Production Only'&&r.conclusion==='success'&&r.head_sha?.startsWith('5f234b0'));
+            const training=runs.find(r=>r.name==='T2 V3 Discovery Production 60'&&r.conclusion==='success');
+            if(!mc || !training)return core.setFailed('Missing completed V3 source runs');
+            const fam=['normal','lognormal','weibull','invgauss','exgaussian','exwald'];
+            const [mcA,trA]=await Promise.all([mc,training].map(r=>github.paginate(github.rest.actions.listWorkflowRunArtifacts,{owner:context.repo.owner,repo:context.repo.repo,run_id:r.id,per_page:100})));
+            const m=new Set(mcA.filter(x=>!x.expired).map(x=>x.name));
+            const d=new Set(trA.filter(x=>!x.expired).map(x=>x.name));
+            for(const f of fam){
+              for(let i=0;i<10;i++)if(!d.has(`t2-v3-discovery-${f}-seed${i}`))return core.setFailed('Missing frozen Discovery '+f+':'+i);
+              for(let s=10;s<15;s++)for(const n of [200,1000,3000])
+                if(!m.has(`mc-v3-heldout-${f}-seed${s}-n${n}`))return core.setFailed('Missing reserved Held-out '+f+':'+s+':'+n);
+            }
+            core.setOutput('mc_run',String(mc.id));
+            core.setOutput('training_run',String(training.id));
+      - uses: actions/checkout@v4
+      - id: matrix
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          x=[dict(family=f,seed=s,n=n) for f in ['normal','lognormal','weibull','invgauss','exgaussian','exwald'] for s in range(10,15) for n in [200,1000,3000]]
+          assert len(x)==90
+          print('matrix='+json.dumps({'include':x},separators=(',',':')))
+          PY
+  heldout:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-v3-discovery-${{ matrix.family }}-seed*
+          merge-multiple: true
+          path: artifacts/discovery_v3
+          run-id: ${{ needs.plan.outputs.training_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-heldout-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/mc_v3_real26
+          run-id: ${{ needs.plan.outputs.mc_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Evaluate ten frozen Discovery models on independent Held-out V3
+        env:
+          FAMILY: ${{ matrix.family }}
+          SEED: ${{ matrix.seed }}
+          SAMPLE_N: ${{ matrix.n }}
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_confirmatory_inference.R heldout "$FAMILY" "$SEED" "$SAMPLE_N"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t2-v3-heldout-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/v3_confirmatory_inference/
+          retention-days: 90
+          if-no-files-found: error

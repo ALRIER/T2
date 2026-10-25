@@ -1,0 +1,90 @@
+name: T2 V3 Stress Production 90
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths: ['.github/workflows/v3-stress-production.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  packages: read
+concurrency:
+  group: t2-v3-stress-production
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      mc_run: ${{ steps.source.outputs.mc_run }}
+      training_run: ${{ steps.source.outputs.training_run }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: source
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs=await github.paginate(github.rest.actions.listWorkflowRunsForRepo,{owner:context.repo.owner,repo:context.repo.repo,per_page:100});
+            const origin=runs.find(r=>r.name==='T2 V3 - Monte Carlo Production Only'&&r.conclusion==='success'&&r.head_sha?.startsWith('5f234b0'));
+            const training=await github.rest.actions.getWorkflowRun({owner:context.repo.owner,repo:context.repo.repo,run_id:40132811105});
+            if(!origin || training.data.conclusion!=='success')return core.setFailed('Source runs missing');
+            const fam=['normal','lognormal','weibull','invgauss','exgaussian','exwald'];
+            const [m,d]=await Promise.all([origin,{id:training.data.id}].map(r=>github.paginate(github.rest.actions.listWorkflowRunArtifacts,{owner:context.repo.owner,repo:context.repo.repo,run_id:r.id,per_page:100})));
+            const ms=new Set(m.filter(x=>!x.expired).map(x=>x.name)),ds=new Set(d.filter(x=>!x.expired).map(x=>x.name));
+            for(const f of fam){
+              for(let i=0;i<10;i++)if(!ds.has(`t2-v3-discovery-${f}-seed${i}`))return core.setFailed('Missing discovery '+f+':'+i);
+              for(let s=15;s<20;s++)for(const n of [200,1000,3000])
+                if(!ms.has(`mc-v3-stress-${f}-seed${s}-n${n}`))return core.setFailed('Missing stress '+f+':'+s+':'+n);
+            }
+            core.setOutput('mc_run',String(origin.id));
+            core.setOutput('training_run',String(training.data.id));
+      - uses: actions/checkout@v4
+      - id: matrix
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          jobs=[dict(family=f,seed=s,n=n) for f in ['normal','lognormal','weibull','invgauss','exgaussian','exwald'] for s in range(15,20) for n in [200,1000,3000]]
+          print('matrix='+json.dumps({'include':jobs},separators=(',',':')))
+          PY
+  stress:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-v3-discovery-${{ matrix.family }}-seed*
+          merge-multiple: true
+          path: artifacts/discovery_v3
+          run-id: ${{ needs.plan.outputs.training_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: mc-v3-stress-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/mc_v3_real26
+          run-id: ${{ needs.plan.outputs.mc_run }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Independent stress scoring with frozen Discovery weights
+        env:
+          FAMILY: ${{ matrix.family }}
+          SEED: ${{ matrix.seed }}
+          SAMPLE_N: ${{ matrix.n }}
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_confirmatory_inference.R stress "$FAMILY" "$SEED" "$SAMPLE_N"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t2-v3-stress-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
+          path: artifacts/v3_confirmatory_inference/
+          retention-days: 90
+          if-no-files-found: error
