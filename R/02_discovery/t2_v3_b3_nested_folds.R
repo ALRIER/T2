@@ -10,10 +10,13 @@ t2_b3_stratified_folds <- function(family, seed, ids=0:120, k=5L) {
    data.frame(scenario_id=as.integer(id),
      band=if(is.null(z$band))'unclassified' else as.character(z$band)[1L],
      mechanism=if(is.null(z$mechanism))'unclassified' else as.character(z$mechanism)[1L],
+     mad=if(is.null(z$mad_scale)) NA_real_ else as.numeric(z$mad_scale)[1L],
+     contamination=if(is.null(z$contamination)) NA_real_ else as.numeric(z$contamination)[1L],
      stringsAsFactors=FALSE)
  })
  tab<-do.call(rbind,meta)
- tab$stratum<-paste(tab$band,tab$mechanism,sep='::')
+ tab$mad_band<-ifelse(is.na(tab$mad),'unknown',ifelse(tab$mad<=4.5,'low',ifelse(tab$mad<=12,'mid','high')))
+ tab$stratum<-paste(tab$band,tab$mechanism,tab$mad_band,sep='::')
  # Balanced assignment within observed strata, with global fold balance.
  tab$fold<-NA_integer_; totals<-integer(k)
  for(key in sort(unique(tab$stratum))){
