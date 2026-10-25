@@ -25,6 +25,7 @@ for(family in families)for(seed in 0:9) {
                             weights=paste(sprintf('%.9f',W[,idx]),collapse=';'))
     }
   }
+  rm(fit); if(seed %% 3L == 0L) invisible(gc(verbose=FALSE))
 }
 out <- do.call(rbind,rows)
 dir.create('artifacts/discovery_analysis',recursive=TRUE,showWarnings=FALSE)
@@ -54,6 +55,7 @@ for(family in families) for(seed in 0:9) {
       }
     }
   }
+  rm(fit); if(seed %% 3L == 0L) invisible(gc(verbose=FALSE))
 }
 weights <- do.call(rbind,component_rows)
 write.csv(weights,'artifacts/discovery_analysis/component_weights_by_seed.csv',row.names=FALSE)
