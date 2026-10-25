@@ -30,8 +30,29 @@ jobs:
               .map(x=>Number(x.name.split('-').at(-1))).sort((x,y)=>x-y);
             if(!ids.length)return core.setFailed('No immutable audited parent datasets');
             return ids;
-  score_a:
+  freeze-parents:
     needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: t2-v3-rw-audit-profile-*
+          merge-multiple: true
+          run-id: 40142001843
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: artifacts/realworld_regime_matched_v2
+      - name: Block scoring unless original 664-parent population is frozen
+        run: python3 scripts/t2_v3_b3_freeze_parents.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: T2_V3_B3_frozen_parent_manifest
+          path: artifacts/T2_V3_B3_realworld_freeze/
+          if-no-files-found: error
+          retention-days: 90
+  score_a:
+    needs: [plan, freeze-parents]
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
