@@ -82,11 +82,11 @@ jobs:
           FAMILY: ${{ matrix.family }}
           SEED: ${{ matrix.seed }}
           SAMPLE_N: ${{ matrix.n }}
-        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_heldout_frozen_production.R "$FAMILY" "$SEED" "$SAMPLE_N"
+        run: bash scripts/run_r_in_container.sh Rscript scripts/v3_confirmatory_inference.R heldout "$FAMILY" "$SEED" "$SAMPLE_N"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: t2-v3-heldout-${{ matrix.family }}-seed${{ matrix.seed }}-n${{ matrix.n }}
-          path: artifacts/heldout_v3/
+          path: artifacts/v3_confirmatory_inference/
           retention-days: 90
           if-no-files-found: error
