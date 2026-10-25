@@ -3,7 +3,7 @@
 # used, while the same prepared scenarios and evaluation budget are retained.
 ga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(TRUE,26L),shard=NULL) {
  set.seed(seed); n<-cfg$population; W<-nsga_initial(n,eligible)
- fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size,cfg$discovery_weight_regularization_lambda %||% 0)
+ fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size,if(is.null(cfg$discovery_weight_regularization_lambda)) 0 else cfg$discovery_weight_regularization_lambda)
  O<-fitness(W); archiveW<-W; archiveO<-O; history<-numeric(); best<-Inf; stale<-0L
  start_g<-1L; last_generation<-0L
  resume<-t2_optimizer_restore(shard,'ga',cfg)
@@ -47,7 +47,7 @@ ga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(
 # Identical T matrices and objectives to NSGA-II; no use of held-out data.
 de_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(TRUE,26L),F=.6,CR=.9,shard=NULL) {
  set.seed(seed); n<-cfg$population; W<-nsga_initial(n,eligible)
- fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size,cfg$discovery_weight_regularization_lambda %||% 0)
+ fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size,if(is.null(cfg$discovery_weight_regularization_lambda)) 0 else cfg$discovery_weight_regularization_lambda)
  O<-fitness(W);history<-numeric(); archiveW<-W;archiveO<-O; best<- -Inf;stale<-0L
  start_g<-1L; last_generation<-0L
  resume<-t2_optimizer_restore(shard,'de',cfg)
@@ -97,7 +97,7 @@ dirichlet_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligib
  while(next_draw<=n_draws) {
   take<-min(chunk,n_draws-next_draw+1L)
   Wi<-matrix(stats::rgamma(26L*take,shape=alpha),nrow=26L)
-  Wi<-normalize_weights(Wi,eligible); Oi<-nsga_evaluate_scenarios(Wi,training_scenarios,cfg$batch_size,cfg$discovery_weight_regularization_lambda %||% 0)
+  Wi<-normalize_weights(Wi,eligible); Oi<-nsga_evaluate_scenarios(Wi,training_scenarios,cfg$batch_size,if(is.null(cfg$discovery_weight_regularization_lambda)) 0 else cfg$discovery_weight_regularization_lambda)
   W<-cbind(W,Wi); O<-rbind(O,Oi); next_draw<-next_draw+take
   t2_optimizer_save(shard,'dirichlet',cfg,ceiling((next_draw-1L)/chunk),
     list(W=W,O=O,next_draw=next_draw))
