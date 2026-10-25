@@ -4,6 +4,7 @@ a<-commandArgs(trailingOnly=TRUE)
 root<-if(length(a))a[[1]] else 'artifacts/realworld_T2_V3_B3'
 source('R/00_shared/load_all.R');t2_load('.')
 source('R/00_shared/pipeline.R')
+source('R/00_shared/t2_v3_b3_resources.R')
 paths<-list.files(root,'^scores_T2_V3_B3[.]csv$',recursive=TRUE,full.names=TRUE)
 if(!length(paths))stop('Missing real-world scores')
 # Reduce one immutable shard at a time; never concatenate raw score catalogs.
@@ -27,7 +28,8 @@ reduce_parent_shard<-function(path){
 chunks<-vector('list',length(paths))
 for(i in seq_along(paths)){
   chunks[[i]]<-reduce_parent_shard(paths[[i]])
-  if(i%%20L==0L)invisible(gc(verbose=FALSE))
+  if(i%%20L==0L){invisible(gc(verbose=FALSE));
+    t2_b3_ram_guard('realworld_parent',file.path(root,'aggregation_T2_V3_B3'),paste0('shard_',i))}
 }
 tmp<-do.call(rbind,chunks);rm(chunks);invisible(gc(verbose=FALSE))
 # Safety: if a parent appears across multiple catalog fragments, collapse it
@@ -36,6 +38,7 @@ parents<-aggregate(cbind(mse_gain,q95_gain)~parent_dataset_id+family+
   proximity_layer+model+reference,tmp,mean)
 rm(tmp);invisible(gc(verbose=FALSE))
 out<-file.path(root,'aggregation_T2_V3_B3');dir.create(out,recursive=TRUE,showWarnings=FALSE)
+t2_b3_inputs_manifest(paths,out,'realworld_parent')
 write.csv(parents,file.path(out,'parent_effects_T2_V3_B3.csv'),row.names=FALSE)
 panels<-split(parents,interaction(parents$family,parents$proximity_layer,parents$model,drop=TRUE))
 res<-list()
@@ -59,6 +62,13 @@ if(!length(res))stop('No independent parent-level hypotheses')
 v<-do.call(rbind,res)
 v$q_BH<-p.adjust(v$p_value,'BH')
 v$supported<-v$gain>0 & v$ci_lower>0 & v$q_BH<=.05
+key<-paste(v$family,v$proximity_layer,v$model,sep=':')
+m<-v$metric=='mse';q<-v$metric=='q95'
+mok<-v$supported[match(key,paste(v$family[m],v$proximity_layer[m],v$model[m],sep=':'))]
+qok<-v$supported[match(key,paste(v$family[q],v$proximity_layer[q],v$model[q],sep=':'))]
+if(anyNA(mok)||anyNA(qok))stop('Incomplete Real World taxonomy pair')
+v$taxonomy<-ifelse(mok&qok,'mse_and_q95_bh_fdr',ifelse(mok,'mse_only_bh_fdr',
+ ifelse(qok,'q95_only_bh_fdr','no_supported_gain')))
 write.csv(v,file.path(out,'parent_inference_T2_V3_B3.csv'),row.names=FALSE)
 writeLines(c('Real-world targets are empirical proxies, not known population truths',
   'Repeated depth and sample sizes are aggregated within independent parent datasets',
