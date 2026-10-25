@@ -24,7 +24,11 @@ for(training_seed in if(smoke)0L else 0:9){
   p<-file.path('artifacts/discovery_v3',fam,sprintf('seed%02d',training_seed),'discovery.rds')
   if(!file.exists(p))stop('Missing frozen Discovery: ',p)
   fit<-readRDS(p);if(length(fit$engines)!=4L)stop('Incomplete engines')
-  models<-fit$models
+  baselines<-lapply(ESTIMATOR_NAMES,function(nm)new_frozen_model(nm,component=nm))
+  learned<-Filter(function(m)!is.null(m$weights),fit$models)
+  models<-c(baselines,learned)
+  if(length(models)!=30L || anyDuplicated(vapply(models,function(m)m$id,character(1))))
+    stop('T2 V3 B3 requires 26 benchmarks plus four frozen candidates')
   discovery_hash<-t2_sha256(p)
   for(id in if(smoke)c(0L,1L,120L) else 0:120){
     sc<-t2_v3_read_scenario(role,fam,seed,n,id)
@@ -44,7 +48,7 @@ for(training_seed in if(smoke)0L else 0:9){
     rm(sc,z)
     if(id%%20L==0L)invisible(gc(verbose=FALSE))
   }
-  rm(fit,models);invisible(gc(verbose=FALSE))
+  rm(fit,models,learned,baselines);invisible(gc(verbose=FALSE))
 }
 # Holm adjustment applies to the complete prespecified shard family, after
 # streaming all candidate/scenario tests. No large Monte Carlo arrays reloaded.
@@ -56,7 +60,7 @@ rm(z);invisible(gc(verbose=FALSE))
 writeLines(c(sprintf('role=%s',role),sprintf('family=%s',fam),
  sprintf('evaluation_seed=%d',seed),sprintf('sample_n=%d',n),
  'B3_streaming=true','bootstrap=paired','null=paired_random_swap',
- 'q95_confirmatory=not_yet_implemented',
+ 'q95_inference=bootstrap_normal_and_joint_holm',
  'FPR_scope=diagnostic_not_procedure_wide'),file.path(out,'protocol.txt'))
 cat('T2_V3_B3_INFERENCE_STREAM_PASS',role,fam,seed,n,count,'scenarios\\n')
 
