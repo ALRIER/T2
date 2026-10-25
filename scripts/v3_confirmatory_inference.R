@@ -13,40 +13,52 @@ source('R/00_shared/v3_downstream.R')
 source('R/00_shared/v3_inference.R')
 out<-file.path('artifacts','v3_confirmatory_inference',role,fam,sprintf('seed%02d_n%d',seed,n))
 dir.create(out,recursive=TRUE,showWarnings=FALSE)
-rows<-list();nulls<-list();k<-0L
+# Stream each scenario directly to persistent storage; do not retain the
+# 121 x 10 inference result tables or scientific matrices in memory.
+scores_file<-file.path(out,'paired_inference.csv')
+null_file<-file.path(out,'null_calibration.csv')
+if(file.exists(scores_file))file.remove(scores_file)
+if(file.exists(null_file))file.remove(null_file)
+count<-0L
 for(training_seed in if(smoke)0L else 0:9){
   p<-file.path('artifacts/discovery_v3',fam,sprintf('seed%02d',training_seed),'discovery.rds')
   if(!file.exists(p))stop('Missing frozen Discovery: ',p)
   fit<-readRDS(p);if(length(fit$engines)!=4L)stop('Incomplete engines')
   models<-fit$models
-  for(id in if(smoke)c(0L,1L,120L) else 0:120) {
+  discovery_hash<-t2_sha256(p)
+  for(id in if(smoke)c(0L,1L,120L) else 0:120){
     sc<-t2_v3_read_scenario(role,fam,seed,n,id)
     set.seed(t2_seed(paste(role,fam,seed,n,training_seed,id),9001L))
-    z<-t2_v3_infer_scenario(sc,models,training_seed,seed,n,B=if(smoke)50L else 200L)
-    z$role<-role;z$family<-fam;z$discovery_sha256<-t2_sha256(p)
-    k<-k+1L;rows[[k]]<-z
-    if(id==0L) {
-      nulls[[length(nulls)+1L]]<-t2_v3_null_fpr(sc,models,training_seed,seed,
-        Bnull=if(smoke)30L else 200L)
+    z<-t2_v3_infer_scenario(sc,models,training_seed,seed,n,B=if(smoke)50L else as.integer(ga_config$bootstrap_B))
+    z$role<-role;z$family<-fam;z$discovery_sha256<-discovery_hash
+    stopifnot(all(is.finite(z$ci_lower)),all(is.finite(z$ci_upper)))
+    write.table(z,scores_file,sep=',',append=count>0L,col.names=count==0L,row.names=FALSE)
+    count<-count+1L
+    if(id==0L){
+      null<-t2_v3_null_fpr(sc,models,training_seed,seed,
+         Bnull=if(smoke)30L else as.integer(ga_config$bootstrap_B))
+      null$role<-role;null$family<-fam
+      write.table(null,null_file,sep=',',append=training_seed>0L,col.names=training_seed==0L,row.names=FALSE)
+      rm(null)
     }
+    rm(sc,z)
+    if(id%%20L==0L)invisible(gc(verbose=FALSE))
   }
+  rm(fit,models);invisible(gc(verbose=FALSE))
 }
-tab<-t2_v3_adjust_inference(do.call(rbind,rows))
-write.csv(tab,file.path(out,'paired_inference.csv'),row.names=FALSE)
-nulltab<-do.call(rbind,nulls)
-write.csv(nulltab,file.path(out,'null_calibration.csv'),row.names=FALSE)
-if(any(!is.finite(tab$ci_lower))||any(!is.finite(tab$ci_upper)))stop('Incomplete intervals')
-if(!all(c('mse','q95')%in%tab$metric)||!nrow(nulltab))stop('Missing inference layer')
+# Holm adjustment applies to the complete prespecified shard family, after
+# streaming all candidate/scenario tests. No large Monte Carlo arrays reloaded.
+z<-read.csv(scores_file)
+z<-t2_v3_adjust_inference(z)
+write.csv(z,file.path(out,'adjusted_inference.csv'),row.names=FALSE)
+stopifnot(all(c('mse','q95')%in%z$metric),file.exists(null_file))
+rm(z);invisible(gc(verbose=FALSE))
 writeLines(c(sprintf('role=%s',role),sprintf('family=%s',fam),
  sprintf('evaluation_seed=%d',seed),sprintf('sample_n=%d',n),
- sprintf('training_seeds=%d',if(smoke)1L else 10L),
- sprintf('scenarios=%d',if(smoke)3L else 121L),
- 'mse_inference=paired_t_holm_and_bootstrap_interval',
- 'q95_inference=paired_bootstrap_interval_exploratory',
- 'null_diagnostic=paired_random_swap_clean_scenario',
- 'inferential_completeness=q95_confirmatory_and_global_FPR_pending'),
- file.path(out,'protocol.txt'))
-cat('V3_INFERENCE_SHARD_PASS',role,fam,seed,n,nrow(tab),'rows\n')
+ 'B3_streaming=true','bootstrap=paired','null=paired_random_swap',
+ 'q95_confirmatory=not_yet_implemented',
+ 'FPR_scope=diagnostic_not_procedure_wide'),file.path(out,'protocol.txt'))
+cat('T2_V3_B3_INFERENCE_STREAM_PASS',role,fam,seed,n,count,'scenarios\\n')
 
 # Publish canonical B3-named counterparts without breaking existing downstream references.
 source('R/00_shared/t2_v3_b3_naming.R')
