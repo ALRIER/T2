@@ -9,11 +9,10 @@ source('R/00_shared/pipeline.R')
 source('R/00_shared/v3_scientific_adapter.R')
 source('R/00_shared/v3_downstream.R')
 params<-jsonlite::fromJSON(path)
-ids<-0:120
-outer_train<-ids[(ids %% 5L+1L)!=outer]
-inner_fold<-as.integer((outer_train %/% 5L) %% 3L)+1L
-training_ids<-outer_train[inner_fold!=inner]
-validation_ids<-outer_train[inner_fold==inner]
+source('R/02_discovery/t2_v3_b3_nested_folds.R')
+parts<-t2_b3_nested_partitions(fam,seed,outer,inner)
+training_ids<-parts$training
+validation_ids<-parts$validation
 if(length(intersect(training_ids,validation_ids))||length(training_ids)<50L||!length(validation_ids))stop('Nested fold leakage')
 training<-t2_v3_discovery_input(fam,seed,selected=training_ids)$scenarios
 cfg<-ga_config
