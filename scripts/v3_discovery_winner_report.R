@@ -63,3 +63,7 @@ stat <- aggregate(weight~family+engine+goal+component,weights,
 summary_weights <- data.frame(stat[1:4],stat$weight,check.names=FALSE)
 write.csv(summary_weights,'artifacts/discovery_analysis/component_weight_stability.csv',row.names=FALSE)
 cat('V3_DISCOVERY_WEIGHT_STABILITY_PASS',nrow(summary_weights),'rows\n')
+
+# Publish canonical B3-named counterparts without breaking existing downstream references.
+source('R/00_shared/t2_v3_b3_naming.R')
+t2_b3_publish("artifacts/discovery_analysis")
