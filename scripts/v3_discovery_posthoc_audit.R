@@ -41,3 +41,7 @@ writeLines(c('NOT_CONFIRMATORY: post-selection in-sample statistics',
              'Independent claims require reserved Held-out tests'),
            file.path(out,'interpretation.txt'))
 cat('V3_DISCOVERY_POSTHOC_PASS',fam,seed,'\n')
+
+# Publish canonical B3-named counterparts without breaking existing downstream references.
+source('R/00_shared/t2_v3_b3_naming.R')
+t2_b3_publish(out)
