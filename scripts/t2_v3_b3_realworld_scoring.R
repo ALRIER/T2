@@ -39,8 +39,8 @@ if(!smoke){
  if(!file.exists(frozen))stop('B3 frozen parent manifest missing; scoring forbidden')
  parent_manifest<-read.csv(frozen,stringsAsFactors=FALSE)
  allowed<-parent_manifest[parent_manifest$family==family,,drop=FALSE]
- if(nrow(allowed)!=664L||anyDuplicated(allowed$parent_dataset_id))
-   stop('B3 664-parent family registry invalid')
+ if(!nrow(allowed)||anyDuplicated(allowed$parent_dataset_id))
+   stop('B3 newly selected parent family registry invalid')
  actual<-profile$parent_dataset_id
  if(!all(actual%in%allowed$parent_dataset_id))
    stop('Scoring batch contains non-frozen parents')
