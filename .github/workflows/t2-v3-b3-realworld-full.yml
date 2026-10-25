@@ -83,6 +83,10 @@ jobs:
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
           path: artifacts/discovery_v3
+      - uses: actions/download-artifact@v5
+        with:
+          name: T2_V3_B3_frozen_parent_manifest
+          path: artifacts/T2_V3_B3_realworld_freeze
       - name: Family-isolated dataset profiling, paired inference and memory audit
         env:
           FAMILY: ${{ matrix.family }}
@@ -129,6 +133,10 @@ jobs:
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
           path: artifacts/discovery_v3
+      - uses: actions/download-artifact@v5
+        with:
+          name: T2_V3_B3_frozen_parent_manifest
+          path: artifacts/T2_V3_B3_realworld_freeze
       - name: Family-isolated dataset profiling, paired inference and memory audit
         env:
           FAMILY: ${{ matrix.family }}
