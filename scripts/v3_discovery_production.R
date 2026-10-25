@@ -11,7 +11,9 @@ d<-t2_v3_discovery_input(family,seed,1000L,500L,0:120)
 stopifnot(length(d$scenarios)==121L,all(vapply(d$scenarios,function(s)
  length(s$eligible)==26L && all(s$eligible) && all(is.finite(s$benchmark$mse)),logical(1))))
 shard<-sprintf('v3-discovery-%s-seed%02d',family,seed)
+start_ram <- gc(reset=TRUE)
 fit<-t2_run_discovery(d,'full',shard,'all')
+rm(d); invisible(gc(verbose=FALSE))
 stopifnot(length(fit$engines)==4L,length(fit$models)>=8L)
 for(m in Filter(function(x)!is.null(x$weights),fit$models))
  if(length(m$weights)!=26L || any(!is.finite(m$weights)) || abs(sum(m$weights)-1)>1e-8)stop('Frozen W invalid')
@@ -22,6 +24,9 @@ write.csv(data.frame(family=family,seed=seed,n=1000L,reps=500L,scenarios=121L,
   engines=paste(names(fit$engines),collapse=';'),
   sha256=t2_sha256(file.path(out,'discovery.rds'))),
  file.path(out,'manifest.csv'),row.names=FALSE)
+write.csv(data.frame(stage='Discovery',version='T2_V3_B3',family=family,seed=seed,
+ memory_used_mb=sum(gc()[,2]),r_max_vcells_mb=max(gc()[,6])),
+ file.path(out,'resource_report.csv'),row.names=FALSE)
 cat('V3_DISCOVERY_PASS',family,seed,'\n')
 
 # Publish canonical B3-named counterparts without breaking existing downstream references.
