@@ -47,7 +47,7 @@ nsga_offspring <- function(W,n,eligible,mutation_rate=.15,crossover_probability=
 # training_scenarios is a list of list(T=R x 26 matrix,target=numeric,
 # band=clean/low/intermediate/high,mechanism=string,eligible=logical).
 # The same prepared Monte Carlo matrices are reused for every generation.
-nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
+nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L,lambda=0) {
  if(!length(training_scenarios)) stop('No training scenarios')
  bands<-c('clean','low','intermediate','high'); accum<-matrix(0,ncol(W),2L)
  for(band in bands) {
@@ -68,11 +68,16 @@ nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L) {
    band_result<-Reduce('+',Map(function(v,ix) v*(length(ix)/length(sc)), band_values, groups))
    accum<-accum+band_result/length(bands)
  }
+ if(lambda>0){
+  # Same dimensionless regularizer for both objectives after normalization
+  pen<-lambda*colSums((normalize_weights(W)-1/26)^2)
+  accum<-accum + cbind(pen,pen)
+ }
  colnames(accum)<-c('mse','q95');accum
 }
 nsga_discover <- function(training_scenarios,cfg=ga_config,seed=101L,eligible=rep(TRUE,26L),shard=NULL) {
  set.seed(seed);n<-cfg$population; W<-nsga_initial(n,eligible)
- fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size)
+ fitness<-function(w) nsga_evaluate_scenarios(w,training_scenarios,cfg$batch_size,cfg$discovery_weight_regularization_lambda %||% 0)
  O<-fitness(W);history<-numeric();archiveW<-W;archiveO<-O; best_prior<- -Inf;stale<-0L
  start_g<-1L; last_generation<-0L
  resume<-t2_optimizer_restore(shard,'nsga2',cfg)
