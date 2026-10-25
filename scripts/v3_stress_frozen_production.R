@@ -6,11 +6,17 @@ source('R/00_shared/load_all.R');t2_load('.')
 source('R/00_shared/pipeline.R')
 source('R/00_shared/v3_scientific_adapter.R')
 source('R/00_shared/v3_downstream.R')
+source('R/00_shared/t2_v3_b3_resources.R')
 if(!seed%in%15:19 || !n%in%c(200L,1000L,3000L))stop('Reserved stress role contract violated')
 out<-file.path('artifacts','v3_stress_scoring',family,sprintf('seed%02d_n%d',seed,n))
 dir.create(out,recursive=TRUE,showWarnings=FALSE)
 input<-file.path('artifacts','discovery_v3')
 if(!dir.exists(input))stop('Frozen Discovery results absent')
+t2_b3_inputs_manifest(c(
+  file.path(input,family,sprintf('seed%02d',0:9),'discovery.rds'),
+  file.path(t2_v3_block_dir('stress',family,seed,n),sprintf('scenario_%04d.rds',0:120))
+),out,'stress')
+t2_b3_ram_guard('stress',out,'start')
 first<-TRUE
 for(training_seed in 0:9) {
   source_file<-file.path(input,family,sprintf('seed%02d',training_seed),'discovery.rds')
@@ -28,6 +34,8 @@ for(training_seed in 0:9) {
   write.table(z,outpath,append=!first,row.names=FALSE,col.names=first,
               sep=',',quote=TRUE)
   first<-FALSE
+  rm(fit,models,z);invisible(gc(verbose=FALSE))
+  t2_b3_ram_guard('stress',out,paste0('train_',training_seed))
   cat('V3_STRESS_SCORE_PASS',family,'train',training_seed,'stress',seed,'n',n,'rows',nrow(z),'\\n')
 }
 summary<-read.csv(file.path(out,'scores.csv'))
