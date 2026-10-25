@@ -30,7 +30,7 @@ for(j in seq_len(nrow(profile))) {
   x<-readRDS(raw);x<-as.numeric(x);x<-x[is.finite(x)]
   if(length(x)<150L)stop('Insufficient parent observations: ',id)
   for(n in if(smoke)200L else c(200L,1000L)) {
-    R<-if(smoke)20L else 500L
+    R<-if(smoke)100L else 500L
     set.seed(t2_seed(paste('B3',family,id,n),18517L))
     T<-matrix(NA_real_,R,26L,dimnames=list(NULL,ESTIMATOR_NAMES))
     for(i in seq_len(R))T[i,]<-component_vector(sample(x,n,replace=TRUE))
