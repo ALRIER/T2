@@ -1,0 +1,35 @@
+name: T2 V3 B3 Production Kickoff Upstream
+on:
+  push:
+    branches: [t2-v3-contract-adapter-20261024]
+    paths: ['.github/workflows/t2-v3-b3-production-kickoff.yml']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check stage contracts
+        run: |
+          python3 scripts/t2_v3_b3_nested_contract.py
+          python3 scripts/t2_v3_b3_realworld_freeze_smoke.py
+          python3 scripts/t2_v3_b3_taxonomy_ram_gate.py
+  launch-upstream:
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Launch independent Discovery and Real World recollection
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const workflows=['t2-v3-b3-discovery-cv5-refit.yml','t2-v3-b3-realworld-recollect.yml'];
+            for(const workflow_id of workflows){
+              await github.rest.actions.createWorkflowDispatch({
+                owner:context.repo.owner,repo:context.repo.repo,
+                workflow_id,ref:context.ref.replace('refs/heads/','')
+              });
+              core.info('DISPATCHED '+workflow_id);
+            }
+            core.warning('Downstream production intentionally not dispatched: it still uses historical frozen Discovery W; requires B3 weights promotion and new Real World collection run ID.');
