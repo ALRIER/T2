@@ -41,16 +41,20 @@ if(!smoke){
  allowed<-parent_manifest[parent_manifest$family==family,,drop=FALSE]
  if(!nrow(allowed)||anyDuplicated(allowed$parent_dataset_id))
    stop('B3 newly selected parent family registry invalid')
+ # Score only new parents selected and frozen before any model scoring.
+ profile<-profile[profile$parent_dataset_id %in% allowed$parent_dataset_id,,drop=FALSE]
  actual<-profile$parent_dataset_id
- if(!all(actual%in%allowed$parent_dataset_id))
-   stop('Scoring batch contains non-frozen parents')
  if(any(vapply(seq_along(actual),function(i){
    z<-allowed[allowed$parent_dataset_id==actual[i],,drop=FALSE]
    !identical(as.character(z$source_hash[1L]),as.character(profile$raw_sha256[i]))
  },logical(1)))) stop('Frozen provenance mismatch')
 }
 
-if(!nrow(profile))stop('No valid external dataset in batch')
+if(!nrow(profile)){
+ dir.create(file.path('artifacts','realworld_T2_V3_B3',family,basename(batchdir)),recursive=TRUE,showWarnings=FALSE)
+ writeLines('NO_ELIGIBLE_B3_PARENTS',file.path('artifacts','realworld_T2_V3_B3',family,basename(batchdir),'excluded_batch_T2_V3_B3.txt'))
+ quit(save='no',status=0L)
+}
 root<-file.path('artifacts','realworld_T2_V3_B3',family,basename(batchdir))
 dir.create(root,recursive=TRUE,showWarnings=FALSE)
 outfile<-file.path(root,'scores_T2_V3_B3.csv')
