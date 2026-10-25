@@ -109,6 +109,12 @@ for(j in seq_len(nrow(profile))) {
       z$domain<-profile$domain[j];z$source_url<-profile$source_url[j]
       z$empirical_profile<-profile$empirical_profile[j]
       z$proximity_layer<-rw_proximity(family,profile$empirical_profile[j])
+      if(!smoke){
+       fr<-allowed[allowed$parent_dataset_id==profile$parent_dataset_id[j],,drop=FALSE]
+       z$mad_band_proxy<-fr$mad_band_proxy[1L]
+       z$contamination_band_proxy<-fr$contamination_band_proxy[1L]
+       z$synthetic_regime_match<-fr$synthetic_regime_match[1L]
+      }
       z$raw_md5<-profile$raw_sha256[j];z$weights_sha256<-t2_sha256(p)
       write.table(z,outfile,sep=',',append=rows>0L,col.names=rows==0L,row.names=FALSE)
       set.seed(t2_seed(paste('B3_infer',family,id,depth,n,k),19000L))
@@ -117,6 +123,11 @@ for(j in seq_len(nrow(profile))) {
       inf$child_bootstrap_reps<-R
       inf$parent_dataset_id<-profile$parent_dataset_id[j]
       inf$proximity_layer<-rw_proximity(family,profile$empirical_profile[j])
+      if(!smoke){
+       inf$mad_band_proxy<-fr$mad_band_proxy[1L]
+       inf$contamination_band_proxy<-fr$contamination_band_proxy[1L]
+       inf$synthetic_regime_match<-fr$synthetic_regime_match[1L]
+      }
       inf$target_type<-'depth_parent_empirical_mean_proxy'
       write.table(inf,inferfile,sep=',',append=rows>0L,col.names=rows==0L,row.names=FALSE)
       if(k==0L&&depth=='full') {
