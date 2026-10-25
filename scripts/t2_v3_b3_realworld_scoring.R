@@ -33,6 +33,23 @@ if(!dir.exists(batchdir))stop('Missing audited batch: ',batchdir)
 profile<-read.csv(file.path(batchdir,'profiles.csv'),stringsAsFactors=FALSE)
 profile<-profile[profile$load_ok %in% TRUE,,drop=FALSE]
 if(smoke) profile<-head(profile,1L)
+# Enforce outcome-blind frozen parent registry for production B3.
+if(!smoke){
+ frozen<-Sys.getenv('T2_B3_RW_PARENT_MANIFEST','artifacts/T2_V3_B3_realworld_freeze/frozen_parent_family_manifest_T2_V3_B3.csv')
+ if(!file.exists(frozen))stop('B3 frozen parent manifest missing; scoring forbidden')
+ parent_manifest<-read.csv(frozen,stringsAsFactors=FALSE)
+ allowed<-parent_manifest[parent_manifest$family==family,,drop=FALSE]
+ if(nrow(allowed)!=664L||anyDuplicated(allowed$parent_dataset_id))
+   stop('B3 664-parent family registry invalid')
+ actual<-profile$parent_dataset_id
+ if(!all(actual%in%allowed$parent_dataset_id))
+   stop('Scoring batch contains non-frozen parents')
+ if(any(vapply(seq_along(actual),function(i){
+   z<-allowed[allowed$parent_dataset_id==actual[i],,drop=FALSE]
+   !identical(as.character(z$source_hash[1L]),as.character(profile$raw_sha256[i]))
+ },logical(1)))) stop('Frozen provenance mismatch')
+}
+
 if(!nrow(profile))stop('No valid external dataset in batch')
 root<-file.path('artifacts','realworld_T2_V3_B3',family,basename(batchdir))
 dir.create(root,recursive=TRUE,showWarnings=FALSE)
