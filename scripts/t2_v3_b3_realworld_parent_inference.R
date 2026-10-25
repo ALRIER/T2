@@ -6,19 +6,35 @@ source('R/00_shared/load_all.R');t2_load('.')
 source('R/00_shared/pipeline.R')
 paths<-list.files(root,'^scores_T2_V3_B3[.]csv$',recursive=TRUE,full.names=TRUE)
 if(!length(paths))stop('Missing real-world scores')
-all<-do.call(rbind,lapply(paths,read.csv))
-key<-interaction(all$dataset_id,all$family,all$training_seed,all$sample_n,all$depth,drop=TRUE)
-rows<-lapply(split(all,key),function(d) {
-  ref<-if(d$empirical_profile[1]=='normal_like')'mean' else if(d$empirical_profile[1]=='empirical_unknown')'huber' else 'trimmed20'
-  base<-d[d$model==ref,,drop=FALSE]
-  learn<-d[!d$model%in%ESTIMATOR_NAMES,,drop=FALSE]
-  if(nrow(base)!=1L||nrow(learn)!=4L)stop('Invalid comparison structure')
-  data.frame(parent_dataset_id=learn$parent_dataset_id,family=learn$family,
-    proximity_layer=learn$proximity_layer,model=learn$model,reference=ref,
-    mse_gain=base$mse-learn$mse,q95_gain=base$q95-learn$q95)
-})
-d<-do.call(rbind,rows)
-parents<-aggregate(cbind(mse_gain,q95_gain)~parent_dataset_id+family+proximity_layer+model+reference,d,mean)
+# Reduce one immutable shard at a time; never concatenate raw score catalogs.
+reduce_parent_shard<-function(path){
+  x<-read.csv(path,stringsAsFactors=FALSE)
+  key<-interaction(x$dataset_id,x$family,x$training_seed,x$sample_n,x$depth,drop=TRUE)
+  rows<-lapply(split(x,key),function(d){
+    ref<-if(d$empirical_profile[1]=='normal_like')'mean' else
+      if(d$empirical_profile[1]=='empirical_unknown')'huber' else 'trimmed20'
+    base<-d[d$model==ref,,drop=FALSE]
+    learn<-d[!d$model%in%ESTIMATOR_NAMES,,drop=FALSE]
+    if(nrow(base)!=1L||nrow(learn)!=4L)stop('Invalid parent comparison: ',path)
+    data.frame(parent_dataset_id=learn$parent_dataset_id,family=learn$family,
+      proximity_layer=learn$proximity_layer,model=learn$model,reference=ref,
+      mse_gain=base$mse-learn$mse,q95_gain=base$q95-learn$q95)
+  })
+  d<-do.call(rbind,rows)
+  aggregate(cbind(mse_gain,q95_gain)~parent_dataset_id+family+
+    proximity_layer+model+reference,d,mean)
+}
+chunks<-vector('list',length(paths))
+for(i in seq_along(paths)){
+  chunks[[i]]<-reduce_parent_shard(paths[[i]])
+  if(i%%20L==0L)invisible(gc(verbose=FALSE))
+}
+tmp<-do.call(rbind,chunks);rm(chunks);invisible(gc(verbose=FALSE))
+# Safety: if a parent appears across multiple catalog fragments, collapse it
+# before inference so repeated views never count as new independent datasets.
+parents<-aggregate(cbind(mse_gain,q95_gain)~parent_dataset_id+family+
+  proximity_layer+model+reference,tmp,mean)
+rm(tmp);invisible(gc(verbose=FALSE))
 out<-file.path(root,'aggregation_T2_V3_B3');dir.create(out,recursive=TRUE,showWarnings=FALSE)
 write.csv(parents,file.path(out,'parent_effects_T2_V3_B3.csv'),row.names=FALSE)
 panels<-split(parents,interaction(parents$family,parents$proximity_layer,parents$model,drop=TRUE))
