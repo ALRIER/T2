@@ -9,6 +9,7 @@ if(!family%in%c('normal','lognormal','weibull','invgauss','exgaussian','exwald')
 source('R/00_shared/load_all.R');t2_load('.')
 source('R/00_shared/pipeline.R')
 source('R/00_shared/v3_inference.R')
+source('R/00_shared/t2_v3_b3_resources.R')
 # Reuse the depth definitions from the earlier Real World protocol.
 rw_depths <- function(x) {
   q<-stats::quantile(x,c(.1,.75,.9),type=8,names=FALSE)
@@ -44,6 +45,12 @@ if(file.exists(nullfile))file.remove(nullfile)
 null_rows<-0L
 rows<-0L
 train_seeds<-if(smoke)0L else 0:9
+t2_b3_inputs_manifest(c(
+ file.path(batchdir,'profiles.csv'),
+ file.path(batchdir,'raw',paste0(profile$dataset_id,'.rds')),
+ file.path('artifacts/discovery_v3',family,sprintf('seed%02d',train_seeds),'discovery.rds')
+),root,'realworld')
+t2_b3_ram_guard('realworld',root,'start')
 for(j in seq_len(nrow(profile))) {
   id<-profile$dataset_id[j]
   raw<-file.path(batchdir,'raw',paste0(id,'.rds'))
@@ -99,6 +106,7 @@ for(j in seq_len(nrow(profile))) {
       rows<-rows+1L;rm(z,inf,fit,models,candidates)
     }
     rm(T,sc,baselines);invisible(gc(verbose=FALSE))
+    t2_b3_ram_guard('realworld',root,paste0(j,'_',depth,'_',n))
   }
   }
   rm(depths,x);invisible(gc(verbose=FALSE))
