@@ -47,3 +47,7 @@ writeLines(c(sprintf('role=%s',role),sprintf('family=%s',fam),
  'inferential_completeness=q95_confirmatory_and_global_FPR_pending'),
  file.path(out,'protocol.txt'))
 cat('V3_INFERENCE_SHARD_PASS',role,fam,seed,n,nrow(tab),'rows\n')
+
+# Publish canonical B3-named counterparts without breaking existing downstream references.
+source('R/00_shared/t2_v3_b3_naming.R')
+t2_b3_publish(out)
