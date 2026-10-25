@@ -23,3 +23,7 @@ write.csv(data.frame(family=family,seed=seed,n=1000L,reps=500L,scenarios=121L,
   sha256=t2_sha256(file.path(out,'discovery.rds'))),
  file.path(out,'manifest.csv'),row.names=FALSE)
 cat('V3_DISCOVERY_PASS',family,seed,'\n')
+
+# Publish canonical B3-named counterparts without breaking existing downstream references.
+source('R/00_shared/t2_v3_b3_naming.R')
+t2_b3_publish(out)
