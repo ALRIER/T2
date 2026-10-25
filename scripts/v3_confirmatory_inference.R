@@ -61,13 +61,21 @@ for(training_seed in if(smoke)0L else 0:9){
 # streaming all candidate/scenario tests. No large Monte Carlo arrays reloaded.
 z<-read.csv(scores_file)
 z<-t2_v3_adjust_inference(z)
+key<-paste(z$model,z$training_seed,z$scenario_id,sep=':')
+m<-z$metric=='mse';q<-z$metric=='q95'
+mse_ok<-z$confirmed_mse_gain[match(key,paste(z$model[m],z$training_seed[m],z$scenario_id[m],sep=':'))]
+q95_ok<-z$confirmed_q95_gain[match(key,paste(z$model[q],z$training_seed[q],z$scenario_id[q],sep=':'))]
+if(anyNA(mse_ok)||anyNA(q95_ok))stop('B3 taxonomy matching failed')
+z$taxonomy<-ifelse(mse_ok&q95_ok,'mse_and_q95_bh_fdr',
+ ifelse(mse_ok,'mse_only_bh_fdr',
+ ifelse(q95_ok,'q95_only_bh_fdr','no_supported_gain')))
 write.csv(z,file.path(out,'adjusted_inference.csv'),row.names=FALSE)
 stopifnot(all(c('mse','q95')%in%z$metric),file.exists(null_file))
 rm(z);invisible(gc(verbose=FALSE))
 writeLines(c(sprintf('role=%s',role),sprintf('family=%s',fam),
  sprintf('evaluation_seed=%d',seed),sprintf('sample_n=%d',n),
  'B3_streaming=true','bootstrap=paired','reference=mean_predeclared','null=paired_random_swap',
- 'q95_inference=bootstrap_normal_and_joint_holm',
+ 'q95_inference=bootstrap_normal_BH_and_Holm_sensitivity',
  'FPR_scope=diagnostic_not_procedure_wide'),file.path(out,'protocol.txt'))
 cat('T2_V3_B3_INFERENCE_STREAM_PASS',role,fam,seed,n,count,'scenarios\\n')
 
