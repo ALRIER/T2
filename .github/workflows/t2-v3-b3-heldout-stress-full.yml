@@ -65,3 +65,26 @@ jobs:
           path: artifacts/v3_confirmatory_inference
           if-no-files-found: error
           retention-days: 90
+
+  false-positive-calibration:
+    name: T2 V3 B3 Post-Heldout Null Calibration
+    needs: inference
+    if: ${{ needs.inference.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: T2_V3_B3_heldout_*
+          merge-multiple: true
+          path: artifacts/v3_confirmatory_inference
+      - name: Require all 90 held-out calibration shards and aggregate null diagnostics
+        run: python3 scripts/t2_v3_b3_null_calibration_aggregate.py artifacts/v3_confirmatory_inference/heldout
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: T2_V3_B3_Heldout_Null_Calibration
+          path: artifacts/T2_V3_B3_calibration/
+          retention-days: 90
+          if-no-files-found: error
