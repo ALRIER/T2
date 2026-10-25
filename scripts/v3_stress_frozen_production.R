@@ -35,3 +35,7 @@ if(any(!is.finite(summary$mse)) || any(!is.finite(summary$q95)))stop('Invalid st
 write.csv(aggregate(cbind(mse,q95)~model+training_seed,data=summary,FUN=mean),
   file.path(out,'training_comparison.csv'),row.names=FALSE)
 cat('V3_STRESS_SHARD_PASS',family,seed,n,'\\n')
+
+# Publish canonical B3-named counterparts without breaking existing downstream references.
+source('R/00_shared/t2_v3_b3_naming.R')
+t2_b3_publish(out)
