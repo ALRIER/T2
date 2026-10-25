@@ -1,12 +1,12 @@
 # Independent V3 confirmatory inference on frozen predictions and paired Monte Carlo replications.
 # All bootstrap resampling is paired by row, preserving dependence between candidates.
-t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,alpha=.05) {
+t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,alpha=.05,reference='median') {
   stopifnot(is.matrix(sc$T),ncol(sc$T)==26L,nrow(sc$T)>=100L)
   E<-vapply(models,function(m)(model_predict(sc$T,m)-sc$target)^2,numeric(nrow(sc$T)))
   colnames(E)<-vapply(models,function(m)m$id,character(1))
-  if(!'median'%in%colnames(E)) stop('Prespecified median reference missing')
+  if(!reference %in%colnames(E)) stop('Prespecified reference missing')
   if(!identical(dim(E)[2L],length(models)))stop('Invalid error matrix')
-  base<-E[,'median']; R<-nrow(E)
+  base<-E[,reference]; R<-nrow(E)
   # Stratified reproducibility across scientific shards, no global RNG dependency.
   forgoal<-list()
   for(metric in c('mse','q95')) {
@@ -23,14 +23,14 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
     }
     gain<-ref-obs
     ci<-apply(boot,2,stats::quantile,probs=c(alpha/2,1-alpha/2),type=8,names=FALSE)
-    row<-data.frame(model=names(obs),metric=metric,reference='median',
+    row<-data.frame(model=names(obs),metric=metric,reference=reference,
      gain=gain,relative_gain_pct=if(ref>0)100*gain/ref else NA_real_,
      ci_lower=ci[1,],ci_upper=ci[2,],reference_loss=ref,
      candidate_loss=as.numeric(obs),stringsAsFactors=FALSE)
     # Bootstrap distribution centered at the observed contrast represents
     # the approximate H0: reference loss = candidate loss.
     row$bootstrap_null_p<-vapply(seq_along(gain),function(j) {
-      if(names(gain)[j]=='median')return(1)
+      if(names(gain)[j]==reference)return(1)
       se<-stats::sd(boot[,j])
       if(!is.finite(se)||se<=0)return(if(gain[j]>0)0 else 1)
       stats::pnorm(-gain[j]/se)
@@ -42,7 +42,7 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
   # approximation. Both are corrected across the predeclared shard.
   z$p_value<-NA_real_
   for(i in seq_len(nrow(z))) {
-    if(z$model[i]=='median'){z$p_value[i]<-1;next}
+    if(z$model[i]==reference){z$p_value[i]<-1;next}
     x<-base-E[,z$model[i]]
     if(z$metric[i]=='mse'){
       z$p_value[i]<-if(stats::sd(x)>0) stats::pt(-mean(x)/(stats::sd(x)/sqrt(R)),df=R-1L) else if(mean(x)>0) 0 else 1
@@ -57,7 +57,7 @@ t2_v3_infer_scenario <- function(sc,models,training_seed,heldout_seed,n,B=200L,a
 t2_v3_adjust_inference <- function(z,alpha=.05) {
   # Family-wise correction over all reported models, metrics and scenarios.
   z$p_holm<-NA_real_
-  i<-which(!is.na(z$p_value) & z$model!='median')
+  i<-which(!is.na(z$p_value) & z$model!=z$reference)
   z$p_holm[i]<-p.adjust(z$p_value[i],method='holm')
   z$confirmed_mse_gain<-z$metric=='mse' & !is.na(z$p_holm) &
     z$p_holm<alpha & z$gain>0 & z$ci_lower>0
@@ -70,12 +70,12 @@ t2_v3_adjust_inference <- function(z,alpha=.05) {
 # for each replicate reference/candidate errors are exchangeable. Per metric
 # p-values are empirical ranks in the same null world; each simulated world
 # is corrected by Holm across *both metrics and all candidate contrasts*.
-t2_v3_null_fpr <- function(sc, models, train_seed, eval_seed, Bnull=500L, alpha=.05) {
+t2_v3_null_fpr <- function(sc, models, train_seed, eval_seed, Bnull=500L, alpha=.05,reference='median') {
   stopifnot(Bnull>=30L,alpha>0,alpha<1)
   E<-vapply(models,function(m)(model_predict(sc$T,m)-sc$target)^2,numeric(nrow(sc$T)))
   colnames(E)<-vapply(models,function(m)m$id,character(1))
-  if(!'median'%in%colnames(E))stop('Null reference median absent')
-  baseline<-E[,'median'];ids<-setdiff(colnames(E),'median')
+  if(!reference %in%colnames(E))stop('Null reference absent')
+  baseline<-E[,reference];ids<-setdiff(colnames(E),reference)
   R<-length(baseline)
   nullstats<-matrix(NA_real_,nrow=Bnull,ncol=length(ids)*2L,
     dimnames=list(NULL,as.vector(rbind(paste0(ids,'_mse'),paste0(ids,'_q95')))))
@@ -96,7 +96,7 @@ t2_v3_null_fpr <- function(sc, models, train_seed, eval_seed, Bnull=500L, alpha=
   adj<-t(apply(P,1L,stats::p.adjust,method='holm'))
   fwer<-mean(rowSums(adj<=alpha)>0)
   out<-data.frame(model=rep(ids,each=2L),
-    metric=rep(c('mse','q95'),length(ids)),reference='median',
+    metric=rep(c('mse','q95'),length(ids)),reference=reference,
     nominal_alpha=alpha,null_reps=Bnull,
     false_positives=colSums(adj<=alpha),
     empirical_fpr=colMeans(adj<=alpha),
