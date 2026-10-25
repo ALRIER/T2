@@ -78,3 +78,8 @@ if (stage == 'catalog') {
   writeLines('PROFILE_COMPLETE', file.path(out, 'profile.status'))
   cat('PROFILE BATCH', batch, 'COMPLETE\n')
 } else stop('Unknown stage')
+
+# Uniform B3 publication on any successful catalog/profile run.
+source('R/00_shared/t2_v3_b3_naming.R')
+if(stage=='catalog') t2_b3_publish(root)
+if(stage=='profile') t2_b3_publish(file.path(root,sprintf('profile_batch_%03d',batch)))
