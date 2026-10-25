@@ -50,7 +50,10 @@ nsga_offspring <- function(W,n,eligible,mutation_rate=.15,crossover_probability=
 nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L,lambda=0) {
  if(!length(training_scenarios)) stop('No training scenarios')
  bands<-c('clean','low','intermediate','high'); accum<-matrix(0,ncol(W),2L)
- for(band in bands) {
+ present<-bands[vapply(bands,function(b)any(vapply(training_scenarios,function(z)
+  identical(as.character(z$band),b),logical(1))),logical(1))]
+ if(!length(present))stop('No valid bands in CV training partition')
+ for(band in present) {
    sc<-training_scenarios[vapply(training_scenarios,function(z)
      identical(as.character(z$band),band),logical(1))]
    if(!length(sc)) stop(paste('Missing training band:',band))
@@ -66,7 +69,7 @@ nsga_evaluate_scenarios <- function(W,training_scenarios,batch_size=32L,lambda=0
    # Equal within-band scenario weights, equal total weight across four bands.
    # explicit average avoids depending on replicate/sample counts
    band_result<-Reduce('+',Map(function(v,ix) v*(length(ix)/length(sc)), band_values, groups))
-   accum<-accum+band_result/length(bands)
+   accum<-accum+band_result/length(present)
  }
  if(lambda>0){
   # Same dimensionless regularizer for both objectives after normalization
