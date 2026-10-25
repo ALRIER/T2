@@ -4,7 +4,7 @@ Requires newly collected B3 outcome-blind profiles; V2 catalog is excluded.
 No model performance enters selection; no silent fallback to a smaller pool.
 """
 import csv,hashlib,json,pathlib,sys
-base=pathlib.Path(sys.argv[1] if len(sys.argv)>1 else 'artifacts/realworld_regime_matched_v2')
+base=pathlib.Path(sys.argv[1] if len(sys.argv)>1 else 'artifacts/T2_V3_B3_fresh_profiles')
 out=pathlib.Path(sys.argv[2] if len(sys.argv)>2 else 'artifacts/T2_V3_B3_realworld_freeze')
 out.mkdir(parents=True,exist_ok=True)
 if 'realworld_regime_matched_v2' in str(base):
