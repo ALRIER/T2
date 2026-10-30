@@ -14,6 +14,8 @@ if (!mode %in% c('smoke', 'full')) stop('MODE must be smoke or full')
 
 source('R/00_shared/load_all.R'); t2_load('.')
 source('R/00_shared/pipeline.R')
+source('R/06_confirmatory/immutable_provenance.R')
+source('R/00_shared/scenario_store.R')
 t2_check_runtime('.', strict = TRUE)
 
 pg_root <- function() Sys.getenv('T2_PORTFOLIO_ROOT', unset = 'artifacts/confirmatory_portfolio')
@@ -67,6 +69,17 @@ load_canonical <- function(family, seed) {
       as.integer(x$n) != as.integer(pg_value('sample_n')) ||
       as.integer(x$replications) != as.integer(pg_value('replications')) || length(x$scenarios) != 361L)
     stop('Archived canonical block has incompatible provenance: ', p)
+  if (!is.list(x$scenarios) || anyDuplicated(vapply(x$scenarios, function(s) as.integer(s$scenario_id), integer(1L))) ||
+      !identical(sort(vapply(x$scenarios, function(s) as.integer(s$scenario_id), integer(1L))), seq_len(361L)))
+    stop('Archived canonical block has missing or duplicate scenario IDs: ', p)
+  expected_rep <- as.integer(pg_value('replications'))
+  for (i in seq_along(x$scenarios)) {
+    sc <- x$scenarios[[i]]
+    if (!is.matrix(sc$T) || !identical(dim(sc$T), c(expected_rep, 26L)) ||
+        !is.numeric(sc$T) || any(!is.finite(sc$T)) ||
+        length(sc$target) != 1L || !is.finite(sc$target))
+      stop('Invalid estimator matrix or target in canonical scenario ', i, ': ', p)
+  }
   x
 }
 
@@ -77,43 +90,105 @@ score_portfolio <- function(source, target, seed, mode) {
   tab <- tab[tab$source_family == source & tab$target_family == target, , drop = FALSE]
   if (!nrow(tab)) stop('Empty predeclared portfolio')
   if (mode == 'smoke') tab <- tab[seq_len(min(3L, nrow(tab))), , drop = FALSE]
-  canonical <- load_canonical(target, seed)
+  selected_scenarios <- as.integer(tab$scenario_id)
+  if (anyNA(selected_scenarios) || anyDuplicated(selected_scenarios) ||
+      any(selected_scenarios < 1L | selected_scenarios > 361L))
+    stop('Invalid predeclared scenario selection')
+  canonical_path <- t2_mc_path('full',target,seed,as.integer(pg_value('sample_n')),
+                              as.integer(pg_value('replications')))
+  store_root <- t2_scenario_store(canonical_path)
+  use_store <- file.exists(file.path(store_root,'scientific_manifest.csv'))
   source_models <- t2_confirmatory_load_models(source)
-  baseline <- source_models$reference[[1L]]
-  rows <- list(); k <- 0L
-  for (scenario_id in tab$scenario_id) {
-    sc <- canonical$scenarios[[as.integer(scenario_id)]]
-    bse <- (model_predict(sc$T, baseline) - sc$target)^2
-    for (id in names(source_models$candidates)) {
-      model <- source_models$candidates[[id]]; se <- (model_predict(sc$T, model) - sc$target)^2
-      k <- k + 1L
-      rows[[k]] <- data.frame(source_family=source, target_family=target,
-        relation=pg_relation(source,target), validation_seed=as.integer(seed), scenario_id=as.integer(scenario_id),
-        model_id=id, engine=sub(sprintf('^%s_', source), '', sub('_train[0-9]+$', '', id)),
-        training_seed=as.integer(sub('.*_train', '', id)),
-        mse=mean(se), q95=unname(quantile(se,.95,type=8)), benchmark_mse=mean(bse),
-        benchmark_q95=unname(quantile(bse,.95,type=8)), mse_difference=mean(se)-mean(bse),
-        q95_difference=unname(quantile(se,.95,type=8)-quantile(bse,.95,type=8)), n_rep=length(se), stringsAsFactors=FALSE)
-    }
+  trace_root <- file.path(pg_score_root(source,target,seed),'provenance')
+  if (use_store) {
+    selected_manifest <- t2_verify_scenario_store(canonical_path,target,seed,selected_scenarios)
+    t2_write_csv(selected_manifest,file.path(trace_root,'scientific_dependencies.csv'))
+  } else {
+    canonical <- load_canonical(target,seed)
+    t2_trace_t(canonical,target,seed,as.integer(pg_value('sample_n')),
+               as.integer(pg_value('replications')),trace_root)
+    canonical$scenarios <- canonical$scenarios[selected_scenarios]
   }
-  out <- do.call(rbind, rows); root <- pg_score_root(source,target,seed)
-  dir.create(root, recursive=TRUE, showWarnings=FALSE)
-  t2_write_csv(out, file.path(root, 'scores.csv'))
-  writeLines('portfolio_score COMPLETE', file.path(root, 'score.status'))
-  invisible(out)
+  t2_trace_w(source_models$manifest,trace_root)
+  baseline <- source_models$reference[[1L]]
+  root <- pg_score_root(source,target,seed)
+  dir.create(root,recursive=TRUE,showWarnings=FALSE)
+  final <- file.path(root,'scores.csv')
+  staged <- paste0(final,'.inprogress')
+  if (file.exists(staged)) unlink(staged)
+  complete <- FALSE
+  on.exit(if (!complete && file.exists(staged)) unlink(staged),add=TRUE)
+  ids <- names(source_models$candidates)
+  # Frozen candidate weights cannot change across scenarios. Construct the
+  # 26-by-candidates matrix once instead of thousands of times.
+  frozen_weights <- do.call(cbind,lapply(source_models$candidates,function(m)m$weights))
+  if (!identical(dim(frozen_weights),c(26L,length(ids))) ||
+      any(!is.finite(frozen_weights))) stop('Invalid frozen candidate matrix')
+  batch <- t2_batch_size(length(ids),'T2_MODEL_BATCH_SIZE',32L)
+  scenario_batch <- t2_batch_size(nrow(tab),'T2_SCENARIO_BATCH_SIZE',8L)
+  for (sc_ix in t2_batch_indices(nrow(tab),scenario_batch)) {
+    for (i in sc_ix) {
+      scenario_id <- tab$scenario_id[[i]]
+      sc <- if (use_store) {
+        t2_read_rds(file.path(store_root,selected_manifest$filename[[i]]))
+      } else canonical$scenarios[[i]]
+      if (!is.matrix(sc$T) || !is.numeric(sc$T) ||
+          !identical(dim(sc$T),c(as.integer(pg_value('replications')),26L)) ||
+          any(!is.finite(sc$T)) || !is.finite(sc$target) ||
+          !identical(as.integer(sc$scenario_id),as.integer(scenario_id)))
+        stop('Scientific scenario content mismatch: ',scenario_id)
+      bse <- (model_predict(sc$T,baseline)-sc$target)^2
+      bm <- mean(bse)
+      bq <- unname(quantile(bse,.95,type=8))
+      for (ix in t2_batch_indices(length(ids),batch)) {
+        weights <- frozen_weights[,ix,drop=FALSE]
+        predictions <- sc$T %*% weights
+        errors <- sweep(predictions,1L,sc$target,'-')^2
+        mse <- colMeans(errors)
+        q95 <- apply(errors,2L,quantile,probs=.95,type=8,names=FALSE)
+        selected <- ids[ix]
+        result <- data.frame(source_family=source,target_family=target,
+          relation=pg_relation(source,target),validation_seed=as.integer(seed),
+          scenario_id=as.integer(scenario_id),model_id=selected,
+          engine=sub(sprintf('^%s_',source),'',sub('_train[0-9]+$','',selected)),
+          training_seed=as.integer(sub('.*_train','',selected)),
+          mse=mse,q95=q95,benchmark_mse=bm,benchmark_q95=bq,
+          mse_difference=mse-bm,q95_difference=q95-bq,
+          n_rep=nrow(sc$T),stringsAsFactors=FALSE)
+        write.table(result,staged,sep=',',row.names=FALSE,
+                    col.names=!file.exists(staged),append=file.exists(staged),
+                    quote=TRUE,na='')
+      }
+      # Release the completed scenario before continuing to the next.
+      if (!use_store) canonical$scenarios[i] <- list(NULL)
+      rm(sc,bse)
+    }
+    if (isTRUE(getOption('t2.scenario_gc',TRUE))) gc(verbose=FALSE)
+  }
+  if (!file.exists(staged) || file.info(staged)$size==0L)
+    stop('No scientific scores generated')
+  if (!file.rename(staged,final)) stop('Failed atomic score publication')
+  complete <- TRUE
+  writeLines('portfolio_score COMPLETE',file.path(root,'score.status'))
+  invisible(final)
 }
 
 infer_portfolio <- function(source, target, mode) {
-  seeds <- pg_seeds(mode); all <- lapply(seeds, function(s) {
-    p <- file.path(pg_score_root(source,target,s), 'scores.csv')
-    if (!file.exists(p)) stop('Missing portfolio score: ', p)
-    read.csv(p, stringsAsFactors=FALSE, check.names=FALSE)
-  })
-  x <- do.call(rbind, all)
-  # One independent block is one validation seed; models remain separate here.
-  by_seed <- aggregate(cbind(mse_difference,q95_difference,benchmark_mse,benchmark_q95,mse,q95) ~
-                         source_family + target_family + relation + scenario_id + model_id + engine + training_seed + validation_seed,
-                       x, mean)
+  seeds <- pg_seeds(mode)
+  # Consume one independent validation-seed file at a time. The seed-level
+  # summaries preserve the original aggregation keys and arithmetic means.
+  seed_tables <- vector('list',length(seeds))
+  for (i in seq_along(seeds)) {
+    p <- file.path(pg_score_root(source,target,seeds[[i]]),'scores.csv')
+    if (!file.exists(p)) stop('Missing portfolio score: ',p)
+    seed_data <- read.csv(p,stringsAsFactors=FALSE,check.names=FALSE)
+    seed_tables[[i]] <- aggregate(cbind(mse_difference,q95_difference,benchmark_mse,benchmark_q95,mse,q95) ~
+      source_family + target_family + relation + scenario_id + model_id + engine + training_seed + validation_seed,
+      seed_data,mean)
+    rm(seed_data)
+  }
+  by_seed <- do.call(rbind,seed_tables)
+  rm(seed_tables)
   summarize <- function(z, unit) {
     a <- t2_confirmatory_block_test(z$mse_difference, if (mode=='smoke') 20L else t2_confirmatory_bootstrap_B('full'),
                                     t2_seed(paste(source,target,unit,z$model_id[[1L]],'mse'), 12001L))
@@ -175,20 +250,23 @@ report_portfolio <- function() {
   engine_files <- list.files(root, 'engine_region_taxonomy.csv$', recursive=TRUE, full.names=TRUE)
   estimator_winner_files <- list.files(root, '^regional_winners.csv$', recursive=TRUE, full.names=TRUE)
   engine_winner_files <- list.files(root, '^engine_regional_winners.csv$', recursive=TRUE, full.names=TRUE)
-  if (!length(estimator_files) || !length(engine_files) || !length(estimator_winner_files) || !length(engine_winner_files))
-    stop('Portfolio report requires completed inference for every planned source-target pair')
-  estimator <- do.call(rbind, lapply(estimator_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
-  engine <- do.call(rbind, lapply(engine_files, read.csv, stringsAsFactors=FALSE, check.names=FALSE))
-  # One declared multiplicity family per metric and analysis level across the
-  # complete source->target matrix—not 36 independent shard corrections.
-  classify <- function(z) {
-    z$mse_q_value <- p.adjust(z$mse_p_value, 'BH'); z$q95_q_value <- p.adjust(z$q95_p_value, 'BH')
-    z$mse_supported <- z$mse_difference < 0 & z$mse_ci_high < 0 & z$mse_q_value <= .05
-    z$q95_supported <- z$q95_difference < 0 & z$q95_ci_high < 0 & z$q95_q_value <= .05
-    z$evidence_taxonomy <- ifelse(z$mse_supported & z$q95_supported,'mse_and_q95',ifelse(z$mse_supported,'mse_only',ifelse(z$q95_supported,'q95_only','neither_metric')))
-    z
-  }
-  estimator <- classify(estimator); engine <- classify(engine)
+  expected_pairs <- length(t2_families())^2L
+  counts <- c(estimator=length(estimator_files), engine=length(engine_files),
+              estimator_winners=length(estimator_winner_files), engine_winners=length(engine_winner_files))
+  if (any(counts != expected_pairs))
+    stop('Portfolio report is incomplete: expected ', expected_pairs,
+         ' source-target pairs for each output, found ',
+         paste(names(counts), counts, sep='=', collapse=', '),
+         '. Preserve successful shards and rerun only missing pairs.')
+  # Global multiplicity remains across all 36 source-target shards. Only
+  # p-value vectors are globally materialized; taxonomy rows stream to CSV.
+  source('scripts/portfolio_stream_report.R')
+  out_root <- file.path(pg_root(), 'report')
+  dir.create(out_root,recursive=TRUE,showWarnings=FALSE)
+  estimator_rows <- pg_global_fdr_stream(estimator_files,
+    file.path(out_root,'estimator_region_taxonomy_all.csv'))
+  engine_rows <- pg_global_fdr_stream(engine_files,
+    file.path(out_root,'engine_region_taxonomy_all.csv'))
   long_winners <- function(paths, label) do.call(rbind, lapply(paths, function(p) {
     z <- read.csv(p, stringsAsFactors=FALSE, check.names=FALSE)
     do.call(rbind, lapply(c('mse_winner','q95_winner','pareto_winner'), function(metric) {
@@ -209,14 +287,12 @@ report_portfolio <- function() {
   championship <- rbind(win_summary(estimator_winners, 'winner'),
                         win_summary(engine_winners, 'winner'))
   out_root <- file.path(pg_root(), 'report'); dir.create(out_root, recursive=TRUE, showWarnings=FALSE)
-  t2_write_csv(estimator, file.path(out_root, 'estimator_region_taxonomy_all.csv'))
-  t2_write_csv(engine, file.path(out_root, 'engine_region_taxonomy_all.csv'))
   t2_write_csv(estimator_winners, file.path(out_root, 'estimator_regional_winners_all.csv'))
   t2_write_csv(engine_winners, file.path(out_root, 'engine_regional_winners_all.csv'))
   t2_write_csv(championship, file.path(out_root, 'championship_coverage.csv'))
   writeLines(c('# Frozen portfolio generalization report', '',
-    paste0('- estimator-region rows: ', nrow(estimator)),
-    paste0('- engine-region rows: ', nrow(engine)),
+    paste0('- estimator-region rows: ', estimator_rows),
+    paste0('- engine-region rows: ', engine_rows),
     '- Regional winner tables retain MSE, q95 and Pareto outcomes separately.',
     '- Championship coverage is a tournament summary; it does not invalidate local winners.'),
     file.path(out_root, 'README.md'))

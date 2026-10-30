@@ -1,0 +1,9 @@
+# Scientific scenario artifacts are GitHub Actions artifacts
+
+The pipeline remains inside GitHub Actions. The completed original validation run is authoritative and is never rewritten. `.github/workflows/publish-scientific-scenarios.yml` consumes one original `validation-{family}-seed-{seed}` artifact in each of 36 independent jobs, extracts its canonical `n1000_r500.rds`, and derives only the deterministically held-out scientific scenarios. Each publication is named `t2-t-heldout-{family}-seed-{seed}` and contains `scientific_manifest.csv` plus individual scenario RDS files, with SHA-256 digests.
+
+Next, manually dispatch `confirmatory-portfolio-generalization.yml` using the **conversion workflow's run ID** as `scientific_run_id`; its score jobs download just the target family/seed scientific artifact and the validated scenario loader reads scenarios individually. `validation_run_id` remains the original source run ID for backward compatibility if `scientific_run_id` is omitted. There is no external storage dependency.
+
+The 36 scientific artifacts are independently uploadable, but the convert workflow's overall status can be failed if even one shard fails. Check that all needed family/seed artifacts are present before scoring. The 90-day artifact retention is a lifecycle constraint; GitHub Actions alone does not provide indefinite preservation.
+
+Limitations: one source canonical RDS is still fully deserialized in each conversion job; this happens once per family/seed in the conversion layer, never in the scenario-selective scoring path. The scientific sidecar contains only the predetermined held-out partition, so it is not a replacement for the original 361-scenario archive and must not be used for Discovery or other partitions. The converter and workflow have not yet been executed; verify partition equality, checksum reconciliation, statistical equivalence, and artifact download paths in integration tests before a full run.

@@ -1,25 +1,45 @@
-name: T2 Confirmatory — frozen portfolio generalization
+name: T2 Next-stage — frozen portfolio generalization
+
 
 on:
   workflow_dispatch:
+    inputs:
+      r_runtime_image:
+        description: 'Existing Linux R runtime image pinned by immutable digest (registry/image@sha256:...)'
+        required: true
+        type: string
+      scientific_run_id:
+        description: 'Optional Actions run ID with t2-t-heldout family-seed scientific artifacts'
+        required: false
+        default: ''
+        type: string
+      validation_run_id:
+        description: 'GitHub Actions run ID containing immutable validation-family RDS artifacts'
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
+  packages: read
 
 env:
-  VALIDATION_RUN_ID: '39707832846'
+  VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
   T2_PORTFOLIO_ROOT: artifacts/confirmatory_portfolio
 
 jobs:
   portfolio-manifest:
     runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.r_runtime_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Verify prebuilt R runtime
+        run: Rscript scripts/check_environment.R
       - run: Rscript scripts/confirmatory_portfolio_generalization.R manifest
       - uses: actions/upload-artifact@v4
         with:
@@ -31,6 +51,11 @@ jobs:
   portfolio-score:
     needs: portfolio-manifest
     runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.r_runtime_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -41,12 +66,22 @@ jobs:
         validation_seed: [21, 22, 23, 24, 25, 26]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Verify prebuilt R runtime
+        run: Rscript scripts/check_environment.R
       - uses: actions/download-artifact@v5
         with: {name: t2-portfolio-manifest, path: artifacts/confirmatory_portfolio/manifest/}
-      - name: Restore archived target-family validation block
+      # Consume the scientific matrix only; operational checkpoints stay in source artifacts.
+      - name: Download selectively published scientific scenario artifact
+        if: ${{ inputs.scientific_run_id != '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: t2-t-heldout-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
+          path: artifacts/mc_canonical/v2_shared_base_crn/full/${{ matrix.target_family }}/seed${{ matrix.validation_seed }}/n1000_r500.rds.scenarios/
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.scientific_run_id }}
+      - name: Download source artifact for target-family validation block
+        if: ${{ inputs.scientific_run_id == '' }}
         uses: actions/download-artifact@v5
         with:
           name: validation-${{ matrix.target_family }}-seed-${{ matrix.validation_seed }}
@@ -55,6 +90,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.VALIDATION_RUN_ID }}
       - name: Validate canonical validation block
+        if: ${{ inputs.scientific_run_id == '' }}
         env:
           TARGET_FAMILY: ${{ matrix.target_family }}
           VALIDATION_SEED: ${{ matrix.validation_seed }}
@@ -62,13 +98,17 @@ jobs:
         run: |
           set -euo pipefail
           expected="artifacts/mc_canonical/v2_shared_base_crn/full/${TARGET_FAMILY}/seed${VALIDATION_SEED}"
-          candidate=$(find /tmp/validation-artifact -type f -name 'n1000_r500.rds' -print -quit)
-          test -n "$candidate"
-          if [[ ! -f "${expected}/n1000_r500.rds" ]]; then
-            mkdir -p "$(dirname "$expected")"
-            mv "$(dirname "$candidate")" "$expected"
+          mapfile -t candidates < <(find /tmp/validation-artifact -type f -name 'n1000_r500.rds' -print)
+          if [[ "${#candidates[@]}" -ne 1 ]]; then
+            echo "Expected exactly one canonical RDS for ${TARGET_FAMILY}/${VALIDATION_SEED}; found ${#candidates[@]}" >&2
+            exit 1
           fi
-          test -f "${expected}/n1000_r500.rds"
+          candidate="${candidates[0]}"
+          mkdir -p "$expected"
+          cp "$candidate" "${expected}/n1000_r500.rds"
+          test -s "${expected}/n1000_r500.rds"
+          rm -rf /tmp/validation-artifact
+          echo "Imported only the canonical RDS block for ${TARGET_FAMILY} seed ${VALIDATION_SEED} from Actions run ${VALIDATION_RUN_ID}"
       - run: Rscript scripts/confirmatory_portfolio_generalization.R score "${{ matrix.source_family }}" "${{ matrix.target_family }}" "${{ matrix.validation_seed }}" full
       - uses: actions/upload-artifact@v4
         if: always()
@@ -79,8 +119,14 @@ jobs:
           retention-days: 180
 
   portfolio-inference:
-    needs: portfolio-score
+    needs: [portfolio-manifest, portfolio-score]
+    if: ${{ always() && needs.portfolio-manifest.result == 'success' }}
     runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.r_runtime_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -90,9 +136,8 @@ jobs:
         target_family: [normal, lognormal, weibull, invgauss, exgaussian, exwald]
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Verify prebuilt R runtime
+        run: Rscript scripts/check_environment.R
       - uses: actions/download-artifact@v5
         with:
           pattern: t2-portfolio-score-${{ matrix.source_family }}-${{ matrix.target_family }}-seed-*
@@ -109,14 +154,19 @@ jobs:
           retention-days: 180
 
   portfolio-report:
-    needs: portfolio-inference
+    needs: [portfolio-manifest, portfolio-inference]
+    if: ${{ always() && needs.portfolio-manifest.result == 'success' }}
     runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.r_runtime_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-        with: {r-version: '4.3.3', use-public-rspm: true}
-      - run: Rscript -e 'install.packages("https://cran.r-project.org/src/contrib/statmod_1.5.2.tar.gz", repos=NULL, type="source")'
+      - name: Verify prebuilt R runtime
+        run: Rscript scripts/check_environment.R
       - uses: actions/download-artifact@v5
         with:
           pattern: t2-portfolio-inference-*
